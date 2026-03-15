@@ -177,7 +177,6 @@ export class MCPSuggestionEngine {
   addSessionHistory(serverId) {
     this.sessionHistory.add(serverId);
   }
-}
 
   /**
    * Internal method — returns only server IDs (for auto-resolver use).
