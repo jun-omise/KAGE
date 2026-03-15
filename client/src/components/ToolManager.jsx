@@ -356,14 +356,17 @@ export default function ToolManager() {
               <div>
                 <label className="block text-xs text-kage-sub mb-1">Name</label>
                 <input type="text" value={serverForm.name} onChange={(e) => setServerForm(p => ({ ...p, name: e.target.value }))} className="kage-input w-full" placeholder="My MCP Server" />
+                <p className="text-[10px] text-kage-sub mt-1">A friendly name for this server</p>
               </div>
               <div>
                 <label className="block text-xs text-kage-sub mb-1">Command</label>
                 <input type="text" value={serverForm.command} onChange={(e) => setServerForm(p => ({ ...p, command: e.target.value }))} className="kage-input w-full font-mono text-sm" placeholder="npx -y @my/mcp-server" />
+                <p className="text-[10px] text-kage-sub mt-1">The command to start the MCP server (e.g., 'npx -y @modelcontextprotocol/server-filesystem')</p>
               </div>
               <div>
                 <label className="block text-xs text-kage-sub mb-1">Environment Variables</label>
                 <textarea value={serverForm.env} onChange={(e) => setServerForm(p => ({ ...p, env: e.target.value }))} className="kage-input w-full font-mono text-xs min-h-[60px] resize-y" placeholder={"API_KEY=your-key\nSECRET=your-secret"} rows={3} />
+                <p className="text-[10px] text-kage-sub mt-1">One per line in KEY=VALUE format. These are passed to the server process.</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={handleAddServer} disabled={addingServer || !serverForm.name.trim() || !serverForm.command.trim()} className="kage-btn-primary text-sm flex items-center gap-1.5 disabled:opacity-40">
@@ -388,9 +391,9 @@ export default function ToolManager() {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { key: 'writeOps', label: 'Write' },
-              { key: 'externalApi', label: 'External API' },
-              { key: 'fileDeletion', label: 'Delete' },
+              { key: 'writeOps', label: 'Write', help: 'Controls file write and creation operations' },
+              { key: 'externalApi', label: 'External API', help: 'Controls calls to external services and APIs' },
+              { key: 'fileDeletion', label: 'Delete', help: 'Controls file and data deletion operations' },
             ].map((item) => (
               <div key={item.key}>
                 <label className="block text-xs text-kage-sub mb-1">{item.label}</label>
@@ -399,6 +402,7 @@ export default function ToolManager() {
                   <option value="confirm">Always Confirm</option>
                   <option value="first">First Time Confirm</option>
                 </select>
+                <p className="text-[10px] text-kage-sub mt-1">{item.help}</p>
               </div>
             ))}
           </div>

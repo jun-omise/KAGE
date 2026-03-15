@@ -54,6 +54,8 @@ router.post('/connect', (req, res) => {
 
     const id = uuidv4();
     const now = new Date().toISOString();
+    // DB CHECK constraint allows 'builtin' or 'custom' only; normalize 'mcp' → 'custom'
+    const safeType = (type === 'builtin') ? 'builtin' : 'custom';
 
     db.prepare(`
       INSERT INTO tool_configs (id, name, type, config, permissions, status, created_at, updated_at)
@@ -61,7 +63,7 @@ router.post('/connect', (req, res) => {
     `).run(
       id,
       name,
-      type || 'mcp',
+      safeType,
       config ? JSON.stringify(config) : null,
       permissions ? JSON.stringify(permissions) : null,
       now,

@@ -8,8 +8,8 @@ const PLATFORMS = [
     name: 'LINE',
     icon: '\uD83D\uDFE2',
     fields: [
-      { key: 'channelSecret', label: 'Channel Secret', type: 'password' },
-      { key: 'channelAccessToken', label: 'Channel Access Token', type: 'password' },
+      { key: 'channelSecret', label: 'Channel Secret', type: 'password', help: 'LINE Developers Console \u2192 Your Channel \u2192 Basic Settings \u2192 Channel Secret' },
+      { key: 'channelAccessToken', label: 'Channel Access Token', type: 'password', help: 'LINE Developers Console \u2192 Your Channel \u2192 Messaging API \u2192 Issue Channel Access Token' },
     ],
   },
   {
@@ -17,10 +17,10 @@ const PLATFORMS = [
     name: 'WhatsApp',
     icon: '\uD83D\uDCAC',
     fields: [
-      { key: 'accountSid', label: 'Twilio Account SID', type: 'text' },
-      { key: 'authToken', label: 'Twilio Auth Token', type: 'password' },
-      { key: 'fromNumber', label: 'From Number', type: 'tel' },
-      { key: 'verifyToken', label: 'Verify Token', type: 'text' },
+      { key: 'accountSid', label: 'Twilio Account SID', type: 'text', help: 'twilio.com/console \u2192 Account Info \u2192 Account SID' },
+      { key: 'authToken', label: 'Twilio Auth Token', type: 'password', help: 'twilio.com/console \u2192 Account Info \u2192 Auth Token' },
+      { key: 'fromNumber', label: 'From Number', type: 'tel', help: 'Twilio Console \u2192 Messaging \u2192 Senders \u2192 Your WhatsApp number' },
+      { key: 'verifyToken', label: 'Verify Token', type: 'text', help: 'Any custom string you choose (used to verify webhook with Twilio)' },
     ],
   },
   {
@@ -28,9 +28,9 @@ const PLATFORMS = [
     name: 'FB Messenger',
     icon: '\uD83D\uDCAD',
     fields: [
-      { key: 'pageAccessToken', label: 'Page Access Token', type: 'password' },
-      { key: 'appSecret', label: 'App Secret', type: 'password' },
-      { key: 'verifyToken', label: 'Verify Token', type: 'text' },
+      { key: 'pageAccessToken', label: 'Page Access Token', type: 'password', help: 'developers.facebook.com \u2192 Your App \u2192 Messenger \u2192 Settings \u2192 Token Generation' },
+      { key: 'appSecret', label: 'App Secret', type: 'password', help: 'developers.facebook.com \u2192 Your App \u2192 Settings \u2192 Basic \u2192 App Secret' },
+      { key: 'verifyToken', label: 'Verify Token', type: 'text', help: 'Any custom string you choose (must match webhook configuration)' },
     ],
   },
 ];
@@ -164,6 +164,7 @@ export default function MessagingConfig() {
                     onChange={(e) => updateConfig(platform.id, field.key, e.target.value)}
                     className="kage-input w-full text-sm"
                   />
+                  {field.help && <p className="text-[10px] text-kage-sub mt-1">{field.help}</p>}
                 </div>
               ))}
             </div>

@@ -63,7 +63,19 @@
     "viewLogs": "ログを表示",
     "export": "エクスポート",
     "emergencyStop": "緊急停止",
-    "killAll": "全エージェント即時停止"
+    "killAll": "全エージェント即時停止",
+    "costControlHelp": "予期せぬコストを防ぐため、支出制限を設定します。0で制限なし。",
+    "perTaskHelp": "タスク1回あたりの上限（推奨: $0.50-$2.00）",
+    "dailyHelp": "1日あたりの合計上限（推奨: $5-$20）",
+    "monthlyHelp": "1ヶ月あたりの合計上限（推奨: $50-$200）",
+    "permissionsHelp": "エージェントが操作前に許可を求める方法を制御します。",
+    "readHelp": "ファイルやデータの読み取り操作",
+    "writeHelp": "ファイルの作成・変更操作",
+    "deleteHelp": "ファイルやデータの削除操作",
+    "externalHelp": "外部サービスの呼び出し（GitHub, Slack等）",
+    "autoApproveHelp": "確認なしで自動実行",
+    "alwaysConfirmHelp": "毎回確認を求めます",
+    "firstConfirmHelp": "初回のみ確認が必要"
   },
   "tasks": {
     "title": "タスクビルダー",

@@ -233,6 +233,7 @@ export default function SecurityPanel() {
         {/* Cost Control */}
         <div className="kage-card p-5">
           <SectionHeader icon={DollarSign} title={t('security.costControl')} />
+          <p className="text-[10px] text-kage-sub mb-3">{t('security.costControlHelp')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-kage-sub mb-1">{t('security.perTask')}</label>
@@ -247,6 +248,7 @@ export default function SecurityPanel() {
                   className="kage-input w-full pl-7"
                 />
               </div>
+              <p className="text-[10px] text-kage-sub mt-1">{t('security.perTaskHelp')}</p>
             </div>
             <div>
               <label className="block text-xs text-kage-sub mb-1">{t('security.daily')}</label>
@@ -261,6 +263,7 @@ export default function SecurityPanel() {
                   className="kage-input w-full pl-7"
                 />
               </div>
+              <p className="text-[10px] text-kage-sub mt-1">{t('security.dailyHelp')}</p>
             </div>
             <div>
               <label className="block text-xs text-kage-sub mb-1">{t('security.monthly')}</label>
@@ -275,6 +278,7 @@ export default function SecurityPanel() {
                   className="kage-input w-full pl-7"
                 />
               </div>
+              <p className="text-[10px] text-kage-sub mt-1">{t('security.monthlyHelp')}</p>
             </div>
           </div>
         </div>
@@ -282,6 +286,7 @@ export default function SecurityPanel() {
         {/* Permission Policy */}
         <div className="kage-card p-5">
           <SectionHeader icon={Lock} title={t('security.permissions')} />
+          <p className="text-[10px] text-kage-sub mb-3">{t('security.permissionsHelp')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {['read', 'write', 'delete', 'external'].map((perm) => (
               <div key={perm}>
@@ -295,8 +300,14 @@ export default function SecurityPanel() {
                   <option value="confirm">{t('security.alwaysConfirm')}</option>
                   <option value="first">{t('security.firstConfirm')}</option>
                 </select>
+                <p className="text-[10px] text-kage-sub mt-1">{t(`security.${perm}Help`)}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-3 space-y-1">
+            <p className="text-[10px] text-kage-sub"><span className="font-medium">{t('security.autoApprove')}:</span> {t('security.autoApproveHelp')}</p>
+            <p className="text-[10px] text-kage-sub"><span className="font-medium">{t('security.alwaysConfirm')}:</span> {t('security.alwaysConfirmHelp')}</p>
+            <p className="text-[10px] text-kage-sub"><span className="font-medium">{t('security.firstConfirm')}:</span> {t('security.firstConfirmHelp')}</p>
           </div>
         </div>
 

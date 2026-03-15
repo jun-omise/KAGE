@@ -2,15 +2,30 @@ import { app, BrowserWindow, Menu, shell, dialog } from 'electron';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, writeFileSync, copyFileSync } from 'fs';
+import { spawn } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
 
 let mainWindow;
-let serverInstance;
+let serverProcess;
+let serverPort = 3456;
 
 /**
- * Find an available port
+ * Kill any process occupying the given port (dev mode cleanup)
+ */
+async function killProcessOnPort(port) {
+  const { exec } = await import('child_process');
+  return new Promise((resolve) => {
+    exec(`lsof -ti:${port} | xargs kill -9 2>/dev/null`, (err) => {
+      // Wait a moment for port to be released
+      setTimeout(resolve, 1000);
+    });
+  });
+}
+
+/**
+ * Find an available port. In dev mode, always use preferred port (kill existing process if needed).
  */
 async function getAvailablePort(preferred = 3456) {
   const { createServer } = await import('net');
@@ -19,13 +34,21 @@ async function getAvailablePort(preferred = 3456) {
     server.listen(preferred, () => {
       server.close(() => resolve(preferred));
     });
-    server.on('error', () => {
-      // Port in use, try next
-      const server2 = createServer();
-      server2.listen(0, () => {
-        const port = server2.address().port;
-        server2.close(() => resolve(port));
-      });
+    server.on('error', async () => {
+      if (isDev) {
+        // In dev mode, kill the existing process and use preferred port
+        // This ensures Vite proxy (which targets localhost:3456) stays in sync
+        console.log(`Port ${preferred} in use — killing existing process for dev mode...`);
+        await killProcessOnPort(preferred);
+        resolve(preferred);
+      } else {
+        // In production, find a random available port
+        const server2 = createServer();
+        server2.listen(0, () => {
+          const port = server2.address().port;
+          server2.close(() => resolve(port));
+        });
+      }
     });
   });
 }
@@ -38,7 +61,6 @@ function setupEnv() {
   const envPath = join(userDataPath, '.env');
 
   if (!existsSync(envPath)) {
-    // Copy .env.example or create minimal
     const projectRoot = isDev ? join(__dirname, '..') : process.resourcesPath;
     const examplePath = join(projectRoot, '.env.example');
 
@@ -57,38 +79,72 @@ function setupEnv() {
 }
 
 /**
- * Start the Express server
+ * Start the Express server as a child process (avoids native module version mismatch)
  */
 async function startServer(port) {
   const userDataPath = app.getPath('userData');
   const dbPath = join(userDataPath, 'kage.db');
-
-  // Set environment variables
-  process.env.KAGE_DB_PATH = dbPath;
-  process.env.PORT = String(port);
-  process.env.NODE_ENV = 'production';
-  process.env.ELECTRON = '1';
-
-  // Load .env from userData
   const envPath = setupEnv();
-  try {
-    const dotenv = await import('dotenv');
-    dotenv.config({ path: envPath });
-  } catch {}
 
-  // Import and start the server
-  const serverPath = isDev
+  const serverScript = isDev
     ? join(__dirname, '..', 'server', 'index.js')
     : join(process.resourcesPath, 'server', 'index.js');
 
-  try {
-    const serverModule = await import(serverPath);
-    serverInstance = serverModule.server || serverModule.default;
-    console.log(`KAGE server started on port ${port}`);
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    dialog.showErrorBox('KAGE Server Error', `Failed to start: ${error.message}`);
-  }
+  const projectRoot = isDev ? join(__dirname, '..') : process.resourcesPath;
+
+  return new Promise((resolve, reject) => {
+    // Spawn server using system Node.js (not Electron's Node)
+    serverProcess = spawn('node', [serverScript], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        KAGE_DB_PATH: dbPath,
+        PORT: String(port),
+        NODE_ENV: isDev ? 'development' : 'production',
+        ELECTRON: '1',
+        DOTENV_CONFIG_PATH: envPath,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let started = false;
+
+    serverProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log(`[Server] ${output.trim()}`);
+      if (!started && output.includes('running on')) {
+        started = true;
+        resolve();
+      }
+    });
+
+    serverProcess.stderr.on('data', (data) => {
+      console.error(`[Server Error] ${data.toString().trim()}`);
+    });
+
+    serverProcess.on('error', (error) => {
+      console.error('Failed to start server process:', error);
+      if (!started) {
+        reject(error);
+      }
+    });
+
+    serverProcess.on('exit', (code) => {
+      console.log(`Server process exited with code ${code}`);
+      if (!started) {
+        reject(new Error(`Server exited with code ${code}`));
+      }
+    });
+
+    // Timeout: if server doesn't start within 15 seconds
+    setTimeout(() => {
+      if (!started) {
+        started = true;
+        console.warn('Server start timeout — proceeding anyway');
+        resolve();
+      }
+    }, 15000);
+  });
 }
 
 /**
@@ -108,6 +164,17 @@ function createWindow(port) {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  // Log renderer console messages
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const levels = ['verbose', 'info', 'warning', 'error'];
+    console.log(`[Renderer ${levels[level] || level}] ${message}`);
+  });
+
+  // Log page load errors
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Renderer] Page load failed: ${errorCode} ${errorDescription} (${validatedURL})`);
   });
 
   // Load the app
@@ -210,14 +277,21 @@ function createMenu() {
 
 // App lifecycle
 app.whenReady().then(async () => {
-  const port = await getAvailablePort(3456);
-  await startServer(port);
+  try {
+    serverPort = await getAvailablePort(3456);
+    await startServer(serverPort);
+    console.log(`Server ready on port ${serverPort}`);
+  } catch (error) {
+    console.error('Server startup error:', error);
+    dialog.showErrorBox('KAGE Server Error', `Failed to start server: ${error.message}`);
+  }
+
   createMenu();
-  createWindow(port);
+  createWindow(serverPort);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow(port);
+      createWindow(serverPort);
     }
   });
 });
@@ -229,12 +303,9 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  // Cleanup
-  if (serverInstance?.close) {
-    serverInstance.close();
+  // Kill the server child process
+  if (serverProcess && !serverProcess.killed) {
+    serverProcess.kill('SIGTERM');
+    console.log('Server process terminated');
   }
-  try {
-    const { closeDb } = require(join(__dirname, '..', 'server', 'db', 'init.js'));
-    closeDb();
-  } catch {}
 });

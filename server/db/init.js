@@ -72,11 +72,13 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS tool_configs (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      type TEXT CHECK(type IN ('builtin', 'custom')),
+      type TEXT CHECK(type IN ('builtin', 'custom', 'mcp')),
       config JSON,
       permissions JSON,
       enabled BOOLEAN DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      status TEXT DEFAULT 'disconnected',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS security_events (
@@ -190,6 +192,14 @@ function initSchema() {
     db.exec("ALTER TABLE tool_configs ADD COLUMN server_id TEXT");
     db.exec("ALTER TABLE tool_configs ADD COLUMN key TEXT");
     db.exec("ALTER TABLE tool_configs ADD COLUMN value TEXT");
+  }
+
+  // Migration: add status and updated_at to tool_configs
+  try {
+    db.prepare("SELECT status FROM tool_configs LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tool_configs ADD COLUMN status TEXT DEFAULT 'disconnected'");
+    db.exec("ALTER TABLE tool_configs ADD COLUMN updated_at DATETIME");
   }
 }
 

@@ -12,10 +12,10 @@ export const DEFAULT_SECURITY_CONFIG = {
     auto_approve_external: false,
   },
   loop_detection: {
-    max_same_tool_calls: 3,
-    max_agent_bounces: 5,
-    max_task_duration_ms: 60000,
-    max_tokens_per_task: 100000,
+    max_same_tool_calls: 10,
+    max_agent_bounces: 10,
+    max_task_duration_ms: 300000,
+    max_tokens_per_task: 200000,
   },
   pii_protection: {
     enabled: true,

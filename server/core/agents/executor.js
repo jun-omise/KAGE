@@ -32,24 +32,28 @@ Tool argument formats:
 - write_excel: { "filePath": "/absolute/path.xlsx", "sheets": [{ "name": "Sheet1", "headers": ["Col1","Col2"], "data": [["row1col1","row1col2"]] }] }
 - create_presentation: { "filePath": "/absolute/path.pptx", "slides": [{ "layout": "title", "title": "...", "subtitle": "..." }] }
 - open_application: { "appName": "App Name" }
+- run_applescript: { "script": "tell application \\"AppName\\" to ..." } — Can control ANY macOS app (Adobe Illustrator, Photoshop, Final Cut, etc.)
+- send_keys_to_app: { "appName": "App Name", "keys": "keystroke or shortcut" }
 - File paths support ~ for home directory (e.g. ~/Desktop/file.xlsx)
 
 Rules:
 1. Use EXACTLY the tools listed in the subtask. Do NOT explore directories or check permissions first.
 2. Provide complete arguments - do not omit required fields.
 3. If an error occurs, retry with corrected arguments.
-4. Never log sensitive data.`
+4. Never log sensitive data.
+5. NEVER suggest installing plugins or MCP servers. Use run_applescript to control any app.`
     };
   }
 
   async execute(subtask, previousResults = [], { model } = {}) {
     const maxRetries = 3;
     let totalUsage = null;
+    let lastError = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        // Ask the AI what to do with this subtask
-        const { result: decision, usage } = await this.ai.runAgent(this.config, {
+        // Build context for AI — include error feedback from previous attempts
+        const context = {
           task: 'execute_subtask',
           subtask,
           previous_results: previousResults,
@@ -58,7 +62,16 @@ Rules:
             description: t.description,
           })),
           attempt: attempt + 1,
-        }, { model });
+        };
+
+        // If previous attempt failed, include error details so AI can correct
+        if (lastError) {
+          context.previous_error = lastError;
+          context.instruction = `Previous attempt failed with error: "${lastError}". Please fix the arguments and try again. Common fixes: use camelCase (filePath not file_path), ensure arrays are properly formatted, use absolute paths.`;
+        }
+
+        // Ask the AI what to do with this subtask
+        const { result: decision, usage } = await this.ai.runAgent(this.config, context, { model });
 
         // Accumulate usage across retries
         totalUsage = this._mergeUsage(totalUsage, usage);
@@ -67,6 +80,14 @@ Rules:
         if (decision.action === 'tool_call' && decision.tool) {
           const toolResult = await this._executeToolCall(subtask, decision);
           toolResult.usage = totalUsage;
+
+          // If tool execution failed and we have retries left, feed error back to AI
+          if (!toolResult.success && attempt < maxRetries - 1) {
+            lastError = toolResult.error || 'Tool execution failed';
+            console.error(`[Executor] Tool "${decision.tool}" failed (attempt ${attempt + 1}/${maxRetries}): ${lastError}`);
+            continue; // Retry with error feedback
+          }
+
           return toolResult;
         }
 
@@ -82,18 +103,20 @@ Rules:
         };
 
       } catch (error) {
+        lastError = error.message;
+        console.error(`[Executor] Attempt ${attempt + 1}/${maxRetries} error: ${error.message}`);
         if (attempt === maxRetries - 1) {
           return {
             subtaskId: subtask.id,
             success: false,
             result: null,
-            details: { attempts: maxRetries },
+            details: { attempts: maxRetries, lastError },
             toolUsed: null,
-            error: error.message,
+            error: `Failed after ${maxRetries} attempts: ${error.message}`,
             usage: totalUsage,
           };
         }
-        // Retry
+        // Continue to next retry with error feedback
       }
     }
   }

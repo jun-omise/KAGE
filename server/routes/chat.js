@@ -18,7 +18,7 @@ router.post('/chat', async (req, res) => {
 
     let convId = conversationId;
 
-    // Create conversation if not provided
+    // Create conversation if not provided or if provided ID doesn't exist
     if (!convId) {
       convId = uuidv4();
       const title = message.substring(0, 100) || 'New Conversation';
@@ -26,6 +26,16 @@ router.post('/chat', async (req, res) => {
       db.prepare(
         'INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)'
       ).run(convId, title, now, now);
+    } else {
+      // Verify conversation exists, create if it doesn't
+      const existing = db.prepare('SELECT id FROM conversations WHERE id = ?').get(convId);
+      if (!existing) {
+        const title = message.substring(0, 100) || 'New Conversation';
+        const now = new Date().toISOString();
+        db.prepare(
+          'INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)'
+        ).run(convId, title, now, now);
+      }
     }
 
     // Save user message

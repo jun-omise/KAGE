@@ -12,17 +12,17 @@ const CHANNEL_TYPES = [
 const EVENT_TYPES = ['task_start', 'task_complete', 'task_error', 'approval_required', 'cost_warning', 'security_alert'];
 
 const CONFIG_FIELDS = {
-  webhook: [{ key: 'url', label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.example.com/...' }],
-  line: [{ key: 'token', label: 'LINE Notify Token', type: 'password', placeholder: 'Your LINE Notify token' }],
+  webhook: [{ key: 'url', label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.example.com/...', help: 'Enter the URL that will receive POST requests with JSON payloads' }],
+  line: [{ key: 'token', label: 'LINE Notify Token', type: 'password', placeholder: 'Your LINE Notify token', help: 'Get from LINE Notify (notify-bot.line.me). Login \u2192 Generate Token' }],
   whatsapp: [
-    { key: 'accountSid', label: 'Account SID', type: 'text', placeholder: 'ACxxxxxx' },
-    { key: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Your Twilio auth token' },
-    { key: 'fromNumber', label: 'From Number', type: 'tel', placeholder: '+1234567890' },
-    { key: 'toNumber', label: 'To Number', type: 'tel', placeholder: '+1234567890' },
+    { key: 'accountSid', label: 'Account SID', type: 'text', placeholder: 'ACxxxxxx', help: 'Find at twilio.com/console \u2192 Account Info' },
+    { key: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Your Twilio auth token', help: 'Find at twilio.com/console \u2192 Account Info' },
+    { key: 'fromNumber', label: 'From Number', type: 'tel', placeholder: '+1234567890', help: 'Your Twilio WhatsApp number (from Messaging \u2192 Senders)' },
+    { key: 'toNumber', label: 'To Number', type: 'tel', placeholder: '+1234567890', help: 'Recipient WhatsApp number with country code' },
   ],
   messenger: [
-    { key: 'pageAccessToken', label: 'Page Access Token', type: 'password', placeholder: 'Your page access token' },
-    { key: 'recipientId', label: 'Recipient ID', type: 'text', placeholder: 'Facebook user ID' },
+    { key: 'pageAccessToken', label: 'Page Access Token', type: 'password', placeholder: 'Your page access token', help: 'Get from developers.facebook.com \u2192 Your App \u2192 Messenger Settings \u2192 Token Generation' },
+    { key: 'recipientId', label: 'Recipient ID', type: 'text', placeholder: 'Facebook user ID', help: 'Facebook user ID (find at findmyfbid.in or from Graph API)' },
   ],
 };
 
@@ -167,6 +167,7 @@ export default function NotificationSettings() {
                   className="kage-input w-full"
                   placeholder={field.placeholder}
                 />
+                {field.help && <p className="text-[10px] text-kage-sub mt-1">{field.help}</p>}
               </div>
             ))}
 

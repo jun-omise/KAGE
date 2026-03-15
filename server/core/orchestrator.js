@@ -191,14 +191,15 @@ class AgentOrchestrator {
       sseManager.send(conversationId, 'agent:complete', { agent: 'sentinel', result: 'success', duration_ms: planCheckDuration });
       this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Complete', outputPreview: planCheck.requires_approval ? 'Approval required' : 'Plan approved' });
 
-      // --- Loop detection check ---
+      // --- Loop detection pre-check (e.g. duration/token limits before execution starts) ---
       const loopCheck = this.loopDetector.checkLimits(taskId, securityConfig);
       if (loopCheck.exceeded) {
         this.auditLogger.log('alert', { conversationId, type: 'loop_detected', reason: loopCheck.reason });
-        sseManager.send(conversationId, 'agent:warning', { agent: 'system', message: `Loop detected: ${loopCheck.reason}` });
+        sseManager.send(conversationId, 'agent:warning', { agent: 'system', message: `Safety limit reached: ${loopCheck.reason}` });
+        // For duration/token limits, still halt; but log clearly
         const sessionTotal = tokenTracker.getSessionTotal();
         return {
-          response: `⚠️ Safety limit triggered: ${loopCheck.reason}. Task halted.`,
+          response: `⚠️ Safety limit reached before execution: ${loopCheck.reason}. Please try a simpler request or adjust limits in Security Settings.`,
           trace,
           cost: sessionTotal.totalCost,
           blocked: true,
@@ -309,27 +310,25 @@ class AgentOrchestrator {
           duration_ms: execDuration,
         });
 
-        // Log tool usage if applicable
-        if (subtask.tools?.length) {
-          subtask.tools.forEach(tool => {
-            this.loopDetector.trackToolCall(taskId, tool);
-            this.auditLogger.log('tool_call', { conversationId, tool, subtaskId: subtask.id });
-          });
+        // Log tool usage based on ACTUAL execution (not planned tools)
+        // This prevents over-counting when plan lists tools that don't get called
+        if (result.toolUsed) {
+          this.loopDetector.trackToolCall(taskId, result.toolUsed);
+          this.auditLogger.log('tool_call', { conversationId, tool: result.toolUsed, subtaskId: subtask.id });
         }
 
         if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
 
-        // Mid-execution loop check
+        // Mid-execution loop check — instead of hard stop, break loop and continue to review/response
         const midLoopCheck = this.loopDetector.checkLimits(taskId, securityConfig);
         if (midLoopCheck.exceeded) {
           this.auditLogger.log('alert', { conversationId, type: 'loop_mid_execution', reason: midLoopCheck.reason });
-          const sessionTotal = tokenTracker.getSessionTotal();
-          return {
-            response: `⚠️ Safety limit during execution: ${midLoopCheck.reason}. Partial results available.`,
-            trace,
-            cost: sessionTotal.totalCost,
-            blocked: true,
-          };
+          sseManager.send(conversationId, 'agent:warning', {
+            agent: 'system',
+            message: `Safety limit reached: ${midLoopCheck.reason}. Continuing with partial results.`,
+          });
+          // Break loop but continue to review & response generation with partial results
+          break;
         }
       }
 
@@ -451,7 +450,7 @@ Respond in the same language as the user's message.`,
     ];
 
     const response = await this.ai.chat(messages, {
-      systemPrompt: 'You are KAGE, a helpful AI assistant. Generate a concise, natural response based on the provided context.',
+      systemPrompt: 'You are KAGE, a helpful AI assistant. Generate a concise, natural response based on the provided context. NEVER suggest the user install plugins, extensions, or MCP servers. NEVER say a tool or integration is unavailable. If a task was executed via AppleScript or other tools, report the result directly.',
       maxTokens: 2048,
       model,
     });

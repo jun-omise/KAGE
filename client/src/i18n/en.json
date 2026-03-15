@@ -63,7 +63,19 @@
     "viewLogs": "View Logs",
     "export": "Export",
     "emergencyStop": "Emergency Stop",
-    "killAll": "Stop All Agents Immediately"
+    "killAll": "Stop All Agents Immediately",
+    "costControlHelp": "Set spending limits to prevent unexpected costs. Set to 0 for no limit.",
+    "perTaskHelp": "Max cost per single task (recommended: $0.50-$2.00)",
+    "dailyHelp": "Max total cost per day (recommended: $5-$20)",
+    "monthlyHelp": "Max total cost per month (recommended: $50-$200)",
+    "permissionsHelp": "Control how agents request permission before performing actions.",
+    "readHelp": "File and data reading operations",
+    "writeHelp": "File creation and modification operations",
+    "deleteHelp": "File and data deletion operations",
+    "externalHelp": "Calls to external services (GitHub, Slack, etc.)",
+    "autoApproveHelp": "Operations execute without asking",
+    "alwaysConfirmHelp": "You'll be asked every time",
+    "firstConfirmHelp": "Only first use requires confirmation"
   },
   "tasks": {
     "title": "Task Builder",
