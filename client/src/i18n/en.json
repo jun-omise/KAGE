@@ -224,6 +224,20 @@
     "envRequired": "API key required",
     "setup": "Connecting tools..."
   },
+  "localApps": {
+    "title": "Local App Control",
+    "openApp": "Open Application",
+    "excel": "Excel Operations",
+    "powerpoint": "PowerPoint Operations",
+    "screenshot": "Screenshot",
+    "automation": "Desktop Automation",
+    "readExcel": "Read Spreadsheet",
+    "writeExcel": "Create Spreadsheet",
+    "createPptx": "Create Presentation",
+    "readPptx": "Read Presentation",
+    "sendKeys": "Send Keystrokes",
+    "windowControl": "Window Control"
+  },
   "common": {
     "settings": "Settings",
     "close": "Close",

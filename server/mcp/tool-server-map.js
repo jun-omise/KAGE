@@ -94,6 +94,22 @@ const TOOL_SERVER_MAP = {
   // YouTube
   youtube_transcript: 'youtube',
   youtube_search: 'youtube',
+
+  // Local Apps (Desktop & Office)
+  open_application: 'local_apps',
+  list_running_apps: 'local_apps',
+  list_installed_apps: 'local_apps',
+  run_applescript: 'local_apps',
+  send_keys_to_app: 'local_apps',
+  take_screenshot: 'local_apps',
+  read_excel: 'local_apps',
+  write_excel: 'local_apps',
+  modify_excel_cells: 'local_apps',
+  create_presentation: 'local_apps',
+  read_presentation: 'local_apps',
+  open_file_with_default_app: 'local_apps',
+  get_app_windows: 'local_apps',
+  control_app_window: 'local_apps',
 };
 
 /**

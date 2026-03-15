@@ -81,7 +81,7 @@ export function classifyComplexity(message) {
 const AGENT_TIER_MAP = {
   sentinel: { simple: 'fast', moderate: 'fast', complex: 'fast' },
   reviewer: { simple: 'fast', moderate: 'fast', complex: 'fast' },
-  planner:  { simple: 'fast', moderate: 'balanced', complex: 'flagship' },
+  planner:  { simple: 'balanced', moderate: 'balanced', complex: 'flagship' },
   executor: { simple: 'main', moderate: 'main', complex: 'main' },
   final_response: { simple: 'balanced', moderate: 'balanced', complex: 'balanced' },
 };

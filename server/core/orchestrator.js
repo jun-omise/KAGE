@@ -14,6 +14,7 @@ import notificationService from '../notifications/service.js';
 import { classifyComplexity, getModelForAgent, getRoutingPlan } from './model-router.js';
 import { TokenTracker } from './token-tracker.js';
 import autoResolver from '../mcp/auto-resolver.js';
+import mcpManager from '../mcp/client.js';
 
 class AgentOrchestrator {
   constructor() {
@@ -151,7 +152,8 @@ class AgentOrchestrator {
       const plannerStart = Date.now();
       sseManager.send(conversationId, 'agent:start', { agent: 'planner', action: 'Analyzing task...', model: plannerModel });
       this._emitAgentDetail(conversationId, 'planner', { currentAction: 'Task analysis & decomposition', inputPreview: userMessage.slice(0, 200), model: plannerModel });
-      const plan = await this.agents.planner.createPlan(userMessage, { model: plannerModel });
+      const availableTools = mcpManager.getRegisteredTools();
+      const plan = await this.agents.planner.createPlan(userMessage, { model: plannerModel, availableTools });
       const plannerDuration = Date.now() - plannerStart;
       if (plan.usage) tokenTracker.record('planner', plannerModel, plan.usage);
       trace.push({ agent: 'planner', phase: 'planning', result: plan, duration_ms: plannerDuration, model: plannerModel });

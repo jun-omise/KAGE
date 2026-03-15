@@ -224,6 +224,20 @@
     "envRequired": "APIキーが必要です",
     "setup": "ツール接続中..."
   },
+  "localApps": {
+    "title": "ローカルアプリ制御",
+    "openApp": "アプリケーションを開く",
+    "excel": "Excel操作",
+    "powerpoint": "PowerPoint操作",
+    "screenshot": "スクリーンショット",
+    "automation": "デスクトップ自動化",
+    "readExcel": "スプレッドシート読み込み",
+    "writeExcel": "スプレッドシート作成",
+    "createPptx": "プレゼンテーション作成",
+    "readPptx": "プレゼンテーション読み込み",
+    "sendKeys": "キー入力送信",
+    "windowControl": "ウィンドウ制御"
+  },
   "common": {
     "settings": "設定",
     "close": "閉じる",

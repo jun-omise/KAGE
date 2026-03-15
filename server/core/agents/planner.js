@@ -1,16 +1,16 @@
 export class PlannerAgent {
   constructor(claude) {
     this.claude = claude;
-    this.config = {
-      role: 'planner',
-      purpose: 'Understanding user requests, task decomposition, execution planning',
-      systemPrompt: `You are KAGE's planning agent.
+    this.baseSystemPrompt = `You are KAGE's planning agent.
 Receive user requests and output the following:
 1. One-line summary of the task intent
 2. List of necessary subtasks (with execution order)
 3. Required tools and permissions per subtask
 4. Items requiring user confirmation (if any)
 5. Estimated cost and time
+
+IMPORTANT: You MUST use the available MCP tools listed below when they match the task. Do NOT suggest alternative approaches (Python scripts, manual steps, etc.) when a matching tool exists.
+For file paths, always use absolute paths (e.g. /Users/username/Desktop/file.xlsx). The tilde (~) prefix is supported for home directory paths.
 
 Output in JSON format:
 {
@@ -37,13 +37,26 @@ If the request is a simple question/conversation that doesn't need tools, return
   "questions_for_user": [],
   "total_estimated_cost": "$0.01",
   "estimated_time": "5 seconds"
-}`
+}`;
+  }
+
+  _buildConfig(availableTools) {
+    let systemPrompt = this.baseSystemPrompt;
+    if (availableTools && availableTools.length > 0) {
+      const toolList = availableTools.map(t => `- ${t.name}: ${t.description}`).join('\n');
+      systemPrompt += `\n\nAvailable MCP Tools:\n${toolList}`;
+    }
+    return {
+      role: 'planner',
+      purpose: 'Understanding user requests, task decomposition, execution planning',
+      systemPrompt,
     };
   }
 
-  async createPlan(userMessage, { model } = {}) {
+  async createPlan(userMessage, { model, availableTools } = {}) {
     try {
-      const { result, usage } = await this.claude.runAgent(this.config, {
+      const config = this._buildConfig(availableTools);
+      const { result, usage } = await this.claude.runAgent(config, {
         task: 'create_plan',
         input: userMessage,
       }, { model });

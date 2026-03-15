@@ -128,6 +128,28 @@ const KEYWORD_MAP = {
     icon: '\uD83C\uDFAC',
     description: 'Access YouTube transcripts',
   },
+
+  // Local Apps (Desktop & Office)
+  local_apps: {
+    keywords: [
+      'excel', 'spreadsheet', 'xlsx', 'csv', 'powerpoint', 'pptx', 'presentation', 'slides',
+      'open app', 'launch app', 'run app', 'start app', 'application',
+      'applescript', 'screenshot', 'window', 'keystroke', 'keyboard',
+      'word', 'numbers', 'keynote', 'pages', 'finder',
+      'safari', 'chrome', 'mail', 'preview', 'textedit',
+      'microsoft', 'office', 'libre', 'google chrome',
+      // Japanese
+      '\u30A8\u30AF\u30BB\u30EB', '\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8',
+      '\u30D1\u30EF\u30FC\u30DD\u30A4\u30F3\u30C8', '\u30D7\u30EC\u30BC\u30F3\u30C6\u30FC\u30B7\u30E7\u30F3',
+      '\u30B9\u30E9\u30A4\u30C9', '\u30A2\u30D7\u30EA', '\u8D77\u52D5', '\u958B\u304F',
+      '\u30A2\u30D7\u30EA\u30B1\u30FC\u30B7\u30E7\u30F3', '\u64CD\u4F5C',
+      '\u30B9\u30AF\u30EA\u30FC\u30F3\u30B7\u30E7\u30C3\u30C8', '\u30A6\u30A3\u30F3\u30C9\u30A6',
+      '\u30EF\u30FC\u30C9', '\u30CA\u30F3\u30D0\u30FC\u30BA', '\u30AD\u30FC\u30CE\u30FC\u30C8',
+    ],
+    name: 'Local Apps',
+    icon: '\uD83D\uDDA5\uFE0F',
+    description: 'Launch and control local applications, Excel, PowerPoint',
+  },
 };
 
 export class MCPSuggestionEngine {

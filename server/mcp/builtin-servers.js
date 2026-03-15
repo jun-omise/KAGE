@@ -5,6 +5,10 @@
  * Categories: Development, Productivity, Communication, Data, Cloud, AI/ML, Finance, Design, Security, Other
  */
 
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 export const MCP_CATEGORIES = {
   development: { id: 'development', name: 'Development', icon: '💻', nameJa: '開発' },
   productivity: { id: 'productivity', name: 'Productivity', icon: '📋', nameJa: '生産性' },
@@ -15,6 +19,7 @@ export const MCP_CATEGORIES = {
   search: { id: 'search', name: 'Search & Web', icon: '🔍', nameJa: '検索・Web' },
   finance: { id: 'finance', name: 'Finance', icon: '💰', nameJa: '金融' },
   design: { id: 'design', name: 'Design', icon: '🎨', nameJa: 'デザイン' },
+  desktop: { id: 'desktop', name: 'Desktop & Office', icon: '🖥️', nameJa: 'デスクトップ' },
   other: { id: 'other', name: 'Other', icon: '📦', nameJa: 'その他' },
 };
 
@@ -691,6 +696,19 @@ export const BUILTIN_MCP_SERVERS = [
     permissions: ['read'],
     default_enabled: false,
     envKeys: ['FIGMA_ACCESS_TOKEN'],
+  },
+
+  // ─────────────────── Desktop & Office ───────────────────
+  {
+    id: 'local_apps',
+    name: 'Local Apps',
+    description: 'Launch and control local applications, read/write Excel/PowerPoint, AppleScript automation',
+    category: 'desktop',
+    command: 'node',
+    args: [join(__dirname, 'servers/local-apps/index.js')],
+    permissions: ['read', 'write', 'admin'],
+    default_enabled: true,
+    envKeys: [],
   },
 
   // ─────────────────── Other ───────────────────
