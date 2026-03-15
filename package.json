@@ -1,0 +1,27 @@
+{
+  "name": "kage",
+  "version": "0.1.0",
+  "description": "Secure Multi-Agent Personal AI Assistant",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "cd client && npx vite --host",
+    "start": "npm run dev",
+    "build": "cd client && vite build"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "better-sqlite3": "^11.6.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "uuid": "^10.0.0",
+    "dotenv": "^16.0.0",
+    "node-cron": "^3.0.0",
+    "concurrently": "^9.0.0"
+  },
+  "devDependencies": {}
+}

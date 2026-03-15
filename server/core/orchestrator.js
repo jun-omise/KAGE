@@ -1,0 +1,454 @@
+import { v4 as uuid } from 'uuid';
+import aiClient from './ai-client.js';
+import sseManager from './sse-manager.js';
+import { SentinelAgent } from './agents/sentinel.js';
+import { PlannerAgent } from './agents/planner.js';
+import { ExecutorAgent } from './agents/executor.js';
+import { ReviewerAgent } from './agents/reviewer.js';
+import { detectPII, maskPII } from '../security/pii-detector.js';
+import { LoopDetector } from '../security/loop-detector.js';
+import { CostTracker } from '../security/cost-tracker.js';
+import { AuditLogger } from '../security/audit-logger.js';
+import { getDb } from '../db/init.js';
+import notificationService from '../notifications/service.js';
+
+class AgentOrchestrator {
+  constructor() {
+    this.ai = aiClient;
+    this.agents = {
+      sentinel: new SentinelAgent(this.ai),
+      planner: new PlannerAgent(this.ai),
+      executor: new ExecutorAgent(this.ai),
+      reviewer: new ReviewerAgent(this.ai),
+    };
+    this.pendingApprovals = new Map();
+    this.activeTasks = new Map();
+    this.loopDetector = new LoopDetector();
+    this.costTracker = new CostTracker();
+    this.auditLogger = new AuditLogger();
+  }
+
+  _emitProgress(conversationId, phase, stepIndex, totalSteps, description, startTime) {
+    sseManager.send(conversationId, 'pipeline:progress', {
+      phase,
+      stepIndex,
+      totalSteps,
+      description,
+      elapsed_ms: Date.now() - startTime,
+    });
+  }
+
+  _emitAgentDetail(conversationId, agent, data) {
+    sseManager.send(conversationId, 'agent:detail', {
+      agent,
+      ...data,
+    });
+  }
+
+  async processMessage({ conversationId, messageId, message: userMessage, attachments }) {
+    const trace = [];
+    const taskId = uuid();
+    const startTime = Date.now();
+    this.activeTasks.set(taskId, { conversationId, cancelled: false });
+    this.loopDetector.startTask(taskId);
+
+    // Notify task start
+    notificationService.notify('task_start', { taskId, conversationId, message: userMessage.slice(0, 100) }).catch(() => {});
+
+    // Load security config from DB for loop detection limits
+    let securityConfig = {};
+    try {
+      const db = getDb();
+      const row = db.prepare("SELECT value FROM config WHERE key = 'security_config'").get();
+      if (row) securityConfig = JSON.parse(row.value);
+    } catch {}
+
+    try {
+      // --- PII Detection on input ---
+      const piiFindings = detectPII(userMessage);
+      if (piiFindings.length > 0) {
+        this.auditLogger.log('pii_detected', {
+          conversationId,
+          findings: piiFindings.map(f => f.type),
+          action: 'masked',
+        });
+        sseManager.send(conversationId, 'agent:warning', {
+          agent: 'sentinel',
+          message: `PII detected and masked: ${piiFindings.map(f => f.type).join(', ')}`,
+        });
+        userMessage = maskPII(userMessage);
+      }
+
+      // --- Cost limit pre-check ---
+      const costLimits = this.costTracker.checkLimits();
+      if (costLimits.exceeded) {
+        this.auditLogger.log('cost_limit', {
+          conversationId,
+          reason: costLimits.reason,
+        });
+        return {
+          response: `⚠️ Cost limit reached: ${costLimits.reason}. Please adjust limits in Security Settings.`,
+          trace,
+          cost: 0,
+          blocked: true,
+        };
+      }
+
+      // Compute total steps (will be updated after planning)
+      let totalSteps = 6; // sentinel_input + planning + sentinel_plan + execution(1) + review + response
+
+      // Step 1: Sentinel — input validation
+      this._emitProgress(conversationId, 'sentinel_input', 1, totalSteps, 'Validating input...', startTime);
+      const sentinelStart = Date.now();
+      sseManager.send(conversationId, 'agent:start', { agent: 'sentinel', action: 'Validating input...' });
+      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Input validation', inputPreview: userMessage.slice(0, 200) });
+      const inputCheck = await this.agents.sentinel.validateInput(userMessage);
+      const sentinelDuration = Date.now() - sentinelStart;
+      trace.push({ agent: 'sentinel', phase: 'input_check', result: inputCheck, duration_ms: sentinelDuration });
+      sseManager.send(conversationId, 'agent:complete', { agent: 'sentinel', result: 'success', duration_ms: sentinelDuration });
+      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Complete', outputPreview: JSON.stringify(inputCheck).slice(0, 200) });
+      if (inputCheck.blocked) {
+        this.auditLogger.log('blocked', { conversationId, reason: inputCheck.reason, agent: 'sentinel' });
+        return { response: inputCheck.reason, trace, cost: 0, blocked: true };
+      }
+
+      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+
+      // Step 2: Planner — task decomposition
+      this._emitProgress(conversationId, 'planning', 2, totalSteps, 'Creating execution plan...', startTime);
+      const plannerStart = Date.now();
+      sseManager.send(conversationId, 'agent:start', { agent: 'planner', action: 'Analyzing task...' });
+      this._emitAgentDetail(conversationId, 'planner', { currentAction: 'Task analysis & decomposition', inputPreview: userMessage.slice(0, 200) });
+      const plan = await this.agents.planner.createPlan(userMessage);
+      const plannerDuration = Date.now() - plannerStart;
+      trace.push({ agent: 'planner', phase: 'planning', result: plan, duration_ms: plannerDuration });
+      sseManager.send(conversationId, 'agent:complete', { agent: 'planner', result: 'success', duration_ms: plannerDuration });
+
+      // Update totalSteps now that we know how many subtasks
+      const subtaskCount = plan.subtasks?.length || 1;
+      totalSteps = 3 + subtaskCount + 2; // sentinel_input + planning + sentinel_plan + N subtasks + review + response
+      this._emitAgentDetail(conversationId, 'planner', {
+        currentAction: 'Complete',
+        outputPreview: `Plan: ${subtaskCount} subtask(s) - ${plan.summary || ''}`.slice(0, 200),
+      });
+
+      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+
+      // Step 3: Sentinel — plan validation
+      this._emitProgress(conversationId, 'sentinel_plan', 3, totalSteps, 'Validating execution plan...', startTime);
+      const planCheckStart = Date.now();
+      sseManager.send(conversationId, 'agent:start', { agent: 'sentinel', action: 'Validating plan...' });
+      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Plan validation', inputPreview: `${subtaskCount} subtasks` });
+      const planCheck = await this.agents.sentinel.validatePlan(plan);
+      const planCheckDuration = Date.now() - planCheckStart;
+      trace.push({ agent: 'sentinel', phase: 'plan_check', result: planCheck, duration_ms: planCheckDuration });
+      sseManager.send(conversationId, 'agent:complete', { agent: 'sentinel', result: 'success', duration_ms: planCheckDuration });
+      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Complete', outputPreview: planCheck.requires_approval ? 'Approval required' : 'Plan approved' });
+
+      // --- Loop detection check ---
+      const loopCheck = this.loopDetector.checkLimits(taskId, securityConfig);
+      if (loopCheck.exceeded) {
+        this.auditLogger.log('alert', { conversationId, type: 'loop_detected', reason: loopCheck.reason });
+        sseManager.send(conversationId, 'agent:warning', { agent: 'system', message: `Loop detected: ${loopCheck.reason}` });
+        return {
+          response: `⚠️ Safety limit triggered: ${loopCheck.reason}. Task halted.`,
+          trace,
+          cost: this.calculateTotalCost(trace),
+          blocked: true,
+        };
+      }
+
+      // Step 4: Check if approval needed
+      if (planCheck.requires_approval) {
+        const approvalId = uuid();
+        this.pendingApprovals.set(approvalId, {
+          plan,
+          reason: planCheck.approval_reason,
+          estimated_cost: plan.total_estimated_cost,
+          conversationId,
+          taskId,
+        });
+        sseManager.send(conversationId, 'approval:required', {
+          id: approvalId,
+          plan,
+          reason: planCheck.approval_reason,
+          estimated_cost: plan.total_estimated_cost,
+        });
+        this.auditLogger.log('approved', {
+          conversationId,
+          approvalId,
+          status: 'pending',
+          plan_summary: plan.summary,
+        });
+        // Wait for approval (with timeout)
+        const approved = await this.waitForApproval(approvalId, 300000);
+        if (!approved) {
+          this.auditLogger.log('approved', { conversationId, approvalId, status: 'rejected_or_timeout' });
+          return { response: 'Operation cancelled or timed out.', trace, cost: 0 };
+        }
+        this.auditLogger.log('approved', { conversationId, approvalId, status: 'approved' });
+      }
+
+      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+
+      // Step 5: Executor — execute subtasks
+      const results = [];
+      const fileResults = [];
+      const subtasks = plan.subtasks || [{ id: 1, description: userMessage }];
+      const subtaskStartTimes = [];
+      for (let i = 0; i < subtasks.length; i++) {
+        const subtask = subtasks[i];
+        const execStart = Date.now();
+        subtaskStartTimes.push(execStart);
+        const currentStep = 4 + i; // steps 1-3 are sentinel/planner/sentinel
+        this._emitProgress(conversationId, 'execution', currentStep, totalSteps, `Executing: ${subtask.description}`, startTime);
+
+        // Emit subtask-level progress
+        const avgDuration = subtaskStartTimes.length > 1
+          ? (execStart - subtaskStartTimes[0]) / i
+          : 0;
+        const estimatedRemaining = avgDuration > 0 ? Math.round(avgDuration * (subtasks.length - i)) : 0;
+        sseManager.send(conversationId, 'executor:subtask_progress', {
+          subtaskIndex: i,
+          totalSubtasks: subtasks.length,
+          description: subtask.description,
+          estimatedRemaining_ms: estimatedRemaining,
+        });
+
+        sseManager.send(conversationId, 'agent:start', {
+          agent: 'executor',
+          action: `Executing: ${subtask.description}`,
+          progress: `${i + 1}/${subtasks.length}`,
+        });
+        this._emitAgentDetail(conversationId, 'executor', {
+          currentAction: `Subtask ${i + 1}/${subtasks.length}: ${subtask.description}`,
+          inputPreview: JSON.stringify(subtask).slice(0, 200),
+        });
+
+        const result = await this.agents.executor.execute(subtask, results);
+        const execDuration = Date.now() - execStart;
+        results.push(result);
+        trace.push({ agent: 'executor', phase: 'execution', subtask: subtask.id, result, duration_ms: execDuration });
+
+        // Detect file operations for result presentation
+        if (result.toolUsed && result.details?.tool) {
+          const toolName = result.details.tool.toLowerCase();
+          if (toolName.includes('write_file') || toolName.includes('create')) {
+            const filePath = result.details.arguments?.path || result.details.arguments?.file_path || '';
+            if (filePath) fileResults.push({ action: 'created', path: filePath });
+          } else if (toolName.includes('read_file')) {
+            const filePath = result.details.arguments?.path || result.details.arguments?.file_path || '';
+            if (filePath) fileResults.push({ action: 'read', path: filePath });
+          } else if (toolName.includes('edit') || toolName.includes('update') || toolName.includes('move')) {
+            const filePath = result.details.arguments?.path || result.details.arguments?.file_path || '';
+            if (filePath) fileResults.push({ action: 'modified', path: filePath });
+          }
+        }
+
+        this._emitAgentDetail(conversationId, 'executor', {
+          currentAction: result.success ? 'Subtask complete' : 'Subtask failed',
+          toolName: result.toolUsed || null,
+          outputPreview: (result.result || result.error || '').toString().slice(0, 200),
+        });
+
+        sseManager.send(conversationId, 'agent:complete', {
+          agent: 'executor',
+          result: result.success ? 'success' : 'error',
+          subtask: subtask.id,
+          duration_ms: execDuration,
+        });
+
+        // Log tool usage if applicable
+        if (subtask.tools?.length) {
+          subtask.tools.forEach(tool => {
+            this.loopDetector.trackToolCall(taskId, tool);
+            this.auditLogger.log('tool_call', { conversationId, tool, subtaskId: subtask.id });
+          });
+        }
+
+        if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+
+        // Mid-execution loop check
+        const midLoopCheck = this.loopDetector.checkLimits(taskId, securityConfig);
+        if (midLoopCheck.exceeded) {
+          this.auditLogger.log('alert', { conversationId, type: 'loop_mid_execution', reason: midLoopCheck.reason });
+          return {
+            response: `⚠️ Safety limit during execution: ${midLoopCheck.reason}. Partial results available.`,
+            trace,
+            cost: this.calculateTotalCost(trace),
+            blocked: true,
+          };
+        }
+      }
+
+      // Step 6: Reviewer — verification
+      this._emitProgress(conversationId, 'review', totalSteps - 1, totalSteps, 'Reviewing results...', startTime);
+      const reviewerStart = Date.now();
+      sseManager.send(conversationId, 'agent:start', { agent: 'reviewer', action: 'Verifying results...' });
+      this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Verifying execution results', inputPreview: `${results.length} result(s)` });
+      const review = await this.agents.reviewer.review(userMessage, plan, results);
+      const reviewerDuration = Date.now() - reviewerStart;
+      trace.push({ agent: 'reviewer', phase: 'review', result: review, duration_ms: reviewerDuration });
+      sseManager.send(conversationId, 'agent:complete', { agent: 'reviewer', result: 'success', duration_ms: reviewerDuration });
+      this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Complete', outputPreview: JSON.stringify(review).slice(0, 200) });
+
+      // Step 7: Generate final response
+      this._emitProgress(conversationId, 'response', totalSteps, totalSteps, 'Generating response...', startTime);
+      const finalResponse = await this.generateFinalResponse(userMessage, plan, results, review);
+      const totalCost = this.calculateTotalCost(trace);
+      const totalTime = Date.now() - startTime;
+
+      // --- Record cost ---
+      this.costTracker.recordCost(totalCost, {
+        conversationId,
+        taskId,
+        agents: trace.map(t => t.agent),
+      });
+
+      // --- PII check on output ---
+      const outputPII = detectPII(finalResponse);
+      let safeResponse = finalResponse;
+      if (outputPII.length > 0) {
+        safeResponse = maskPII(finalResponse);
+        this.auditLogger.log('pii_detected', { conversationId, phase: 'output', action: 'masked' });
+      }
+
+      // --- Audit log completion ---
+      this.auditLogger.log('agent_action', {
+        conversationId,
+        taskId,
+        action: 'completed',
+        total_cost: totalCost,
+        total_time_ms: totalTime,
+        agents_used: [...new Set(trace.map(t => t.agent))],
+      });
+
+      // Emit file results
+      for (const fr of fileResults) {
+        sseManager.send(conversationId, 'result:file', fr);
+      }
+
+      // Stream final response
+      sseManager.send(conversationId, 'response:done', {
+        total_cost: `$${totalCost.toFixed(4)}`,
+        total_time_ms: totalTime,
+      });
+
+      this.activeTasks.delete(taskId);
+      this.loopDetector.cleanup(taskId);
+
+      // Notify task complete
+      notificationService.notify('task_complete', {
+        taskId, conversationId,
+        cost: `$${totalCost.toFixed(4)}`,
+        elapsed: `${Math.round(totalTime / 1000)}s`,
+      }).catch(() => {});
+
+      return {
+        response: safeResponse,
+        trace,
+        cost: totalCost,
+        tools_used: this.extractToolsUsed(trace),
+      };
+    } catch (error) {
+      this.activeTasks.delete(taskId);
+      this.loopDetector.cleanup(taskId);
+      this.auditLogger.log('alert', { conversationId, error: error.message, phase: 'orchestrator' });
+      console.error('Orchestrator error:', error);
+      sseManager.send(conversationId, 'agent:error', { error: error.message });
+      notificationService.notify('task_error', { taskId, conversationId, error: error.message }).catch(() => {});
+      throw error;
+    }
+  }
+
+  _cancelledResponse(trace) {
+    return { response: 'Task cancelled.', trace, cost: this.calculateTotalCost(trace) };
+  }
+
+  async generateFinalResponse(userMessage, plan, results, review) {
+    const messages = [
+      {
+        role: 'user',
+        content: `Original request: ${userMessage}
+
+Plan: ${JSON.stringify(plan)}
+Execution results: ${JSON.stringify(results)}
+Review: ${JSON.stringify(review)}
+
+Based on the above, generate a natural, helpful response to the user's original request.
+Respond in the same language as the user's message.`,
+      },
+    ];
+
+    const response = await this.ai.chat(messages, {
+      systemPrompt: 'You are KAGE, a helpful AI assistant. Generate a concise, natural response based on the provided context.',
+      maxTokens: 2048,
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    return textContent?.text || 'I apologize, I was unable to generate a response.';
+  }
+
+  async waitForApproval(approvalId, timeoutMs = 300000) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.pendingApprovals.delete(approvalId);
+        resolve(false);
+      }, timeoutMs);
+
+      const check = setInterval(() => {
+        const approval = this.pendingApprovals.get(approvalId);
+        if (!approval) {
+          clearInterval(check);
+          clearTimeout(timeout);
+          resolve(false);
+        } else if (approval.resolved !== undefined) {
+          clearInterval(check);
+          clearTimeout(timeout);
+          this.pendingApprovals.delete(approvalId);
+          resolve(approval.resolved);
+        }
+      }, 500);
+    });
+  }
+
+  resolveApproval(approvalId, approved) {
+    const approval = this.pendingApprovals.get(approvalId);
+    if (approval) {
+      approval.resolved = approved;
+    }
+  }
+
+  cancelTask(taskId) {
+    const task = this.activeTasks.get(taskId);
+    if (task) task.cancelled = true;
+  }
+
+  killAll() {
+    for (const [taskId, task] of this.activeTasks) {
+      task.cancelled = true;
+    }
+    this.activeTasks.clear();
+    this.pendingApprovals.clear();
+    this.auditLogger.log('alert', { action: 'kill_all', message: 'Emergency stop activated' });
+  }
+
+  calculateTotalCost(trace) {
+    // Sonnet pricing: ~$3/MTok input, ~$15/MTok output
+    // Each agent call ≈ ~500 input + ~800 output tokens avg
+    const agentCalls = trace.length;
+    const estimatedInputTokens = agentCalls * 500;
+    const estimatedOutputTokens = agentCalls * 800;
+    return (estimatedInputTokens * 3 / 1_000_000) + (estimatedOutputTokens * 15 / 1_000_000);
+  }
+
+  extractToolsUsed(trace) {
+    return trace
+      .filter(t => t.phase === 'execution')
+      .map(t => t.subtask);
+  }
+}
+
+// Singleton
+const orchestrator = new AgentOrchestrator();
+export default orchestrator;

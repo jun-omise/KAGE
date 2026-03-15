@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #1E1E2E #0A0A0F;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #0A0A0F;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #1E1E2E;
+    border-radius: 3px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #2D2D3F;
+  }
+
+  body {
+    @apply bg-kage-bg text-kage-text antialiased;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: rgba(99, 102, 241, 0.3);
+  }
+}
+
+@layer components {
+  .kage-card {
+    @apply bg-kage-card border border-kage-border rounded-lg;
+  }
+
+  .kage-btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+  }
+
+  .kage-btn-primary {
+    @apply kage-btn bg-kage-primary hover:bg-kage-primary/80 text-white;
+  }
+
+  .kage-btn-danger {
+    @apply kage-btn bg-kage-danger hover:bg-kage-danger/80 text-white;
+  }
+
+  .kage-btn-ghost {
+    @apply kage-btn hover:bg-white/5 text-kage-sub hover:text-kage-text;
+  }
+
+  .kage-input {
+    @apply bg-kage-bg border border-kage-border rounded-lg px-3 py-2 text-kage-text
+           placeholder-kage-sub focus:outline-none focus:border-kage-primary focus:ring-1 focus:ring-kage-primary
+           transition-colors;
+  }
+
+  .kage-badge {
+    @apply px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .kage-badge-active {
+    @apply kage-badge bg-kage-success/20 text-kage-success;
+  }
+
+  .kage-badge-idle {
+    @apply kage-badge bg-kage-sub/20 text-kage-sub;
+  }
+
+  .kage-badge-warning {
+    @apply kage-badge bg-kage-warning/20 text-kage-warning;
+  }
+
+  .kage-badge-error {
+    @apply kage-badge bg-kage-danger/20 text-kage-danger;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
