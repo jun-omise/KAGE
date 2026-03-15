@@ -1,71 +1,75 @@
+<div align="center">
+
+<img src="client/public/favicon.svg" width="80" height="80" alt="KAGE Logo" />
+
 # KAGE
 
-**Secure Multi-Agent Personal AI Assistant**
+### Secure Multi-Agent Personal AI Assistant
 
-KAGE is a self-hosted, multi-agent AI assistant platform that orchestrates multiple specialized AI agents to handle complex tasks securely. It features a 4-agent pipeline, real-time progress tracking, MCP (Model Context Protocol) integrations, multi-platform notifications, and remote control via messaging platforms.
+**4 AI agents working together. One seamless experience.**
 
----
+Self-hosted. Multi-provider. Fully controllable from LINE, WhatsApp, or your browser.
 
-## Features
+[![GitHub release](https://img.shields.io/github/v/release/jun-omise/KAGE?style=flat-square&color=6366F1)](https://github.com/jun-omise/KAGE/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg?style=flat-square)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 
-### Multi-Agent Orchestration
-- **4-agent pipeline**: Sentinel (security) → Planner → Executor → Reviewer
-- Real-time pipeline progress with segmented progress bar
-- Agent Monitor with Cards / Timeline views
-- Pause, resume, and stop controls
-- Cost tracking per task and session
+[Download](#-download) &nbsp;&bull;&nbsp; [Quick Start](#-quick-start) &nbsp;&bull;&nbsp; [Features](#-features) &nbsp;&bull;&nbsp; [Architecture](#-architecture) &nbsp;&bull;&nbsp; [API Reference](#-api-reference)
 
-### Chat Interface
-- Markdown rendering with syntax highlighting
-- File result cards with "Open in Finder" / "Open in VS Code" actions
-- Inline progress indicator during task execution
-- Conversation history management
-
-### MCP Tool Integration
-- 50+ built-in MCP server definitions across 10 categories
-- Smart MCP suggestion engine (auto-detects needed servers from message keywords, Japanese & English)
-- One-click connect for MCP servers
-- MCP Test Runner with predefined test scenarios
-- Custom MCP server support
-
-### Notification System
-- Multi-channel: Webhook, LINE, WhatsApp (Twilio), Facebook Messenger
-- Configurable event filters (task start/complete/error, approval needed)
-- Notification log with history
-- Test send functionality
-
-### Messaging Platform Integration (Remote Control)
-- Control KAGE from LINE, WhatsApp, or Facebook Messenger
-- Passphrase-based authentication per session
-- Rate limiting (30 req/hour/user)
-- Platform signature verification (HMAC-SHA256)
-- Command allowlist/blocklist
-
-### Security
-- Passphrase-based authentication with JWT
-- PII detection & masking
-- Infinite loop detection
-- Cost limits (per-task, daily, monthly)
-- Permission policies (auto-approve, always confirm, first-time confirm)
-- Audit logging
-- Emergency stop
-
-### Multi-Provider AI Support
-Anthropic (Claude), OpenAI (GPT), Google (Gemini), Groq, xAI (Grok), Alibaba (Qwen), Moonshot, OpenRouter
+</div>
 
 ---
 
-## Tech Stack
+## What is KAGE?
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, Vite, Tailwind CSS, Lucide Icons |
-| Backend | Node.js, Express |
-| Database | SQLite (better-sqlite3) |
-| AI | Anthropic SDK, MCP SDK |
-| Auth | bcryptjs, JWT |
-| Realtime | Server-Sent Events (SSE) |
-| i18n | English, Japanese |
+KAGE is a **self-hosted AI assistant** that orchestrates 4 specialized agents to handle complex tasks securely on your local machine. Unlike single-model chatbots, KAGE's multi-agent pipeline ensures every task is security-checked, planned, executed, and reviewed before delivering results.
+
+```
+You: "Organize my project files and create a summary report"
+
+  Sentinel  ─── security check & PII scan
+      ↓
+  Planner   ─── break into subtasks
+      ↓
+  Executor  ─── run tools (filesystem, search, code...)
+      ↓
+  Reviewer  ─── verify results & quality
+      ↓
+  Result    ─── files created + summary delivered
+```
+
+No cloud dependency. Your data stays on your machine.
+
+---
+
+## Download
+
+### Option 1: Clone & Run (Recommended)
+
+```bash
+git clone https://github.com/jun-omise/KAGE.git
+cd KAGE
+npm install
+cp .env.example .env
+npm run dev
+```
+
+### Option 2: Download ZIP
+
+> [**Download Latest Release (ZIP)**](https://github.com/jun-omise/KAGE/archive/refs/heads/main.zip)
+
+After extracting:
+
+```bash
+cd KAGE-main
+npm install
+cp .env.example .env
+npm run dev
+```
+
+### Option 3: Release Package
+
+> [**Releases Page**](https://github.com/jun-omise/KAGE/releases) - Download versioned release packages
 
 ---
 
@@ -73,35 +77,224 @@ Anthropic (Claude), OpenAI (GPT), Google (Gemini), Groq, xAI (Grok), Alibaba (Qw
 
 ### Prerequisites
 
-- Node.js 18+
-- npm
+| Requirement | Version |
+|------------|---------|
+| **Node.js** | 18+ |
+| **npm** | 9+ |
+| **API Key** | Anthropic, OpenAI, Google, or any supported provider |
 
-### Setup
+### 3-Step Setup
 
 ```bash
-# Clone
-git clone https://github.com/jun-omise/KAGE.git
-cd KAGE
+# 1. Install
+git clone https://github.com/jun-omise/KAGE.git && cd KAGE && npm install
 
-# Configure environment
+# 2. Configure
 cp .env.example .env
-# Edit .env and set:
-#   ANTHROPIC_API_KEY=your-api-key
-#   JWT_SECRET=your-random-secret
-#   PORT=3456 (optional)
+```
 
-# Install dependencies
-npm install
+Edit `.env`:
+```env
+ANTHROPIC_API_KEY=sk-ant-...your-key...
+JWT_SECRET=any-random-string-here
+PORT=3456
+```
 
-# Start development
+```bash
+# 3. Launch
 npm run dev
 ```
 
-The app will be available at:
-- **Client**: http://localhost:5173
-- **Server**: http://localhost:3456
+Open **http://localhost:5173** — the Setup Wizard will guide you through initial configuration.
 
-On first launch, a setup wizard will guide you through passphrase creation, API key configuration, and security level selection.
+<div align="center">
+
+| Step | What Happens |
+|------|-------------|
+| **Passphrase** | Set your login passphrase |
+| **API Key** | Enter your AI provider key |
+| **Security Level** | Choose Strict / Balanced / Relaxed |
+| **Tools** | Connect MCP servers (optional) |
+| **Done!** | Start chatting with KAGE |
+
+</div>
+
+---
+
+## Features
+
+### Multi-Agent Pipeline
+
+<table>
+<tr>
+<td width="50%">
+
+**4 specialized agents** work in sequence to ensure quality and security:
+
+| Agent | Role |
+|-------|------|
+| **Sentinel** | Security check, PII detection, risk assessment |
+| **Planner** | Task decomposition & strategy |
+| **Executor** | Tool calls, file operations, API requests |
+| **Reviewer** | Quality verification & response generation |
+
+</td>
+<td width="50%">
+
+**Real-time visibility** into every step:
+
+- Segmented progress bar (Step 2/7: Executing...)
+- Agent Monitor with Cards & Timeline views
+- Live tool call previews with JSON viewer
+- Elapsed time & cost tracking
+- Pause / Resume / Stop controls
+
+</td>
+</tr>
+</table>
+
+### Chat Interface
+
+<table>
+<tr>
+<td width="50%">
+
+- Markdown rendering with syntax highlighting
+- File result cards (Created / Modified / Read)
+- **Open in Finder** / **Open in VS Code** buttons
+- Inline progress during task execution
+- Conversation history & management
+
+</td>
+<td width="50%">
+
+- Smart MCP suggestion banner
+- Auto-detects needed tools from your message
+- One-click server connection
+- Bilingual support (English / Japanese)
+
+</td>
+</tr>
+</table>
+
+### 50+ MCP Tool Integrations
+
+Connect to external tools via [Model Context Protocol](https://modelcontextprotocol.io):
+
+| Category | Examples |
+|----------|---------|
+| **Development** | GitHub, GitLab, Docker, Kubernetes |
+| **Productivity** | Slack, Notion, Google Drive, Todoist |
+| **Data** | PostgreSQL, MySQL, MongoDB, Redis |
+| **Search** | Brave Search, Google Search |
+| **Cloud** | AWS, GCP, Azure, Vercel |
+| **AI** | Hugging Face, Replicate |
+| **Communication** | Gmail, Discord, Telegram |
+
+**Smart Suggestion Engine** — type "search the web for..." and KAGE auto-suggests connecting Brave Search.
+
+### Notification System
+
+Get notified when tasks complete, fail, or need approval:
+
+| Channel | Integration |
+|---------|------------|
+| **Webhook** | Any HTTP endpoint |
+| **LINE** | LINE Notify API |
+| **WhatsApp** | Twilio WhatsApp API |
+| **Messenger** | Facebook Send API |
+
+Configure event filters: task start, task complete, task error, approval needed.
+
+### Remote Control via Messaging
+
+Control KAGE from your phone:
+
+```
+You (LINE): authenticate my-secret-passphrase
+KAGE: Authenticated successfully.
+
+You (LINE): check disk usage on my server
+KAGE: Running task... [Sentinel → Planner → Executor → Reviewer]
+KAGE: Disk usage: 42% (210GB / 500GB). /var/log is using 38GB.
+```
+
+| Feature | Detail |
+|---------|--------|
+| **Platforms** | LINE, WhatsApp, Facebook Messenger |
+| **Auth** | Passphrase-based per session |
+| **Security** | HMAC-SHA256 signature verification |
+| **Rate Limit** | 30 requests/hour per user |
+| **Commands** | Configurable allowlist/blocklist |
+
+### Security First
+
+| Feature | Description |
+|---------|-------------|
+| **Authentication** | Passphrase + JWT |
+| **PII Detection** | Auto-masks sensitive data |
+| **Loop Detection** | Prevents infinite agent loops |
+| **Cost Limits** | Per-task, daily, monthly caps |
+| **Permissions** | Auto-approve / Always confirm / First-time confirm |
+| **Audit Log** | Full action history |
+| **Emergency Stop** | Kill all agents instantly |
+
+### Multi-Provider AI
+
+Switch between providers on the fly:
+
+| Provider | Models |
+|----------|--------|
+| **Anthropic** | Claude 4, 3.5 Sonnet, Haiku |
+| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 |
+| **Google** | Gemini 2.5 Pro, Flash |
+| **Groq** | Llama, Mixtral |
+| **xAI** | Grok |
+| **Alibaba** | Qwen |
+| **Moonshot** | Kimi |
+| **OpenRouter** | 100+ models |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    KAGE Architecture                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────┐    ┌──────────────────────────────────────┐   │
+│  │  React   │◄──►│          Express Server               │   │
+│  │  Client  │SSE │                                      │   │
+│  │          │    │  ┌────────────────────────────────┐   │   │
+│  │ Chat     │    │  │      Orchestrator              │   │   │
+│  │ Monitor  │    │  │                                │   │   │
+│  │ Tools    │    │  │  Sentinel → Planner            │   │   │
+│  │ Settings │    │  │      ↓         ↓               │   │   │
+│  │          │    │  │  Sentinel → Executor (×N)      │   │   │
+│  └──────────┘    │  │      ↓         ↓               │   │   │
+│                  │  │  Reviewer → Response            │   │   │
+│  ┌──────────┐    │  └────────────────────────────────┘   │   │
+│  │  LINE    │    │                                      │   │
+│  │ WhatsApp │◄──►│  ┌──────────┐  ┌──────────────────┐   │   │
+│  │Messenger │    │  │  SQLite  │  │   MCP Servers    │   │   │
+│  └──────────┘    │  │   DB     │  │  (50+ built-in)  │   │   │
+│                  │  └──────────┘  └──────────────────┘   │   │
+│                  └──────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | React 18 + Vite + Tailwind CSS | Fast, responsive dark UI |
+| **Backend** | Node.js + Express | API server & orchestration |
+| **Database** | SQLite (better-sqlite3) | Zero-config persistent storage |
+| **AI** | Anthropic SDK + MCP SDK | Multi-model & tool integration |
+| **Auth** | bcryptjs + JWT | Secure authentication |
+| **Realtime** | Server-Sent Events (SSE) | Live agent status streaming |
+| **i18n** | Custom hooks | English + Japanese |
 
 ---
 
@@ -109,124 +302,162 @@ On first launch, a setup wizard will guide you through passphrase creation, API 
 
 ```
 KAGE/
-├── client/                    # React frontend
+├── client/                         # Frontend (React + Vite)
 │   └── src/
-│       ├── components/        # 22 React components
-│       │   ├── ChatPanel.jsx          # Chat interface
-│       │   ├── AgentMonitor.jsx       # Agent status panel
-│       │   ├── ProgressIndicator.jsx  # Pipeline progress bar
-│       │   ├── PipelineTimeline.jsx   # Timeline view
-│       │   ├── ResultPresenter.jsx    # File result cards
-│       │   ├── MCPSuggestionBanner.jsx # Smart MCP suggestions
-│       │   ├── MCPTestRunner.jsx      # MCP test scenarios
-│       │   ├── NotificationSettings.jsx # Notification config
-│       │   ├── MessagingConfig.jsx    # Messaging platform config
-│       │   ├── ToolManager.jsx        # MCP tool management
-│       │   ├── SecurityPanel.jsx      # Security settings
-│       │   ├── TaskBuilder.jsx        # Task creation
-│       │   └── ...
-│       ├── hooks/             # Custom React hooks
-│       │   ├── useChat.js             # Chat state management
-│       │   ├── useSSE.js              # SSE event handling
-│       │   ├── useAgentState.js       # Agent state aggregation
-│       │   └── useMCPSuggestions.js   # MCP suggestion logic
-│       ├── i18n/              # Translations (en.json, ja.json)
-│       └── styles/            # Global styles
+│       ├── App.jsx                 # Main app with 6-tab navigation
+│       ├── components/
+│       │   ├── ChatPanel.jsx       # Chat interface
+│       │   ├── AgentMonitor.jsx    # Agent status (Cards / Timeline)
+│       │   ├── ProgressIndicator.jsx # Pipeline progress bar
+│       │   ├── PipelineTimeline.jsx  # Vertical timeline view
+│       │   ├── ResultPresenter.jsx   # File result cards
+│       │   ├── MCPSuggestionBanner.jsx # Smart tool suggestions
+│       │   ├── MCPTestRunner.jsx     # MCP test scenarios
+│       │   ├── ToolManager.jsx       # 50+ MCP server catalog
+│       │   ├── NotificationSettings.jsx # Multi-channel notifications
+│       │   ├── MessagingConfig.jsx   # LINE/WhatsApp/Messenger
+│       │   ├── SecurityPanel.jsx     # Security dashboard
+│       │   └── TaskBuilder.jsx       # Task scheduling
+│       ├── hooks/                  # useChat, useSSE, useAgentState...
+│       └── i18n/                   # en.json, ja.json
 │
-├── server/                    # Express backend
-│   ├── index.js               # Entry point
+├── server/                         # Backend (Express)
+│   ├── index.js                    # Entry point & route mounting
 │   ├── core/
-│   │   ├── orchestrator.js    # Multi-agent pipeline orchestration
-│   │   ├── ai-client.js       # Unified AI client
-│   │   ├── claude-client.js   # Claude API integration
-│   │   ├── model-registry.js  # Provider registry
-│   │   ├── sse-manager.js     # SSE event management
-│   │   └── agents/            # Agent implementations
-│   ├── db/
-│   │   └── init.js            # SQLite schema & migrations
+│   │   ├── orchestrator.js         # 4-agent pipeline engine
+│   │   ├── ai-client.js            # Multi-provider AI client
+│   │   ├── sse-manager.js          # Real-time event streaming
+│   │   └── agents/                 # Sentinel, Planner, Executor, Reviewer
 │   ├── mcp/
-│   │   ├── client.js          # MCP client manager
-│   │   ├── builtin-servers.js # 50+ built-in server definitions
-│   │   ├── suggestion-engine.js # Keyword-based MCP suggestions
-│   │   └── test-scenarios.js  # MCP test scenarios
-│   ├── notifications/
-│   │   ├── service.js         # Notification dispatcher
-│   │   └── channels/          # webhook, line, whatsapp, messenger
-│   ├── webhooks/
-│   │   ├── base.js            # Webhook handler base class
-│   │   ├── line.js            # LINE webhook
-│   │   ├── whatsapp.js        # WhatsApp webhook
-│   │   └── messenger.js       # Messenger webhook
-│   ├── security/              # PII detection, cost tracking, audit
-│   ├── memory/                # Long-term memory
-│   └── routes/                # API route handlers
+│   │   ├── client.js               # MCP connection manager
+│   │   ├── builtin-servers.js      # 50+ server definitions
+│   │   └── suggestion-engine.js    # Keyword → MCP server matching
+│   ├── notifications/              # Webhook, LINE, WhatsApp, Messenger
+│   ├── webhooks/                   # Inbound message handlers
+│   ├── security/                   # PII, cost, audit, loop detection
+│   ├── db/                         # SQLite schema & init
+│   └── routes/                     # 13 API route modules
 │
-├── .env.example
-├── package.json
-└── .gitignore
+├── .env.example                    # Environment template
+├── package.json                    # Monorepo scripts
+└── README.md
 ```
 
 ---
 
-## API Endpoints
+## API Reference
 
-| Endpoint | Description |
-|----------|------------|
-| `POST /api/chat` | Send message to AI pipeline |
-| `GET /api/stream/:id` | SSE stream for real-time updates |
-| `GET/POST /api/conversations` | Conversation management |
-| `GET/POST /api/tasks` | Task scheduling & management |
-| `GET/POST /api/tools` | MCP tool configuration |
-| `POST /api/tools/test-scenario` | Run MCP test scenarios |
-| `POST /api/suggestions/mcp` | Get MCP server suggestions |
-| `GET/POST /api/notifications` | Notification channel config |
-| `POST /api/webhooks/{platform}` | Messaging platform webhooks |
-| `GET/POST /api/messaging` | Messaging platform config |
-| `POST /api/auth/login` | Authentication |
-| `POST /api/approval` | Approve/reject agent actions |
-| `GET /api/health` | Health check |
+### Core Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|------------|
+| `POST` | `/api/chat` | Send message → triggers 4-agent pipeline |
+| `GET` | `/api/stream/:id` | SSE stream for real-time agent updates |
+| `GET` | `/api/conversations` | List conversations |
+| `POST` | `/api/conversations` | Create new conversation |
+| `POST` | `/api/approval` | Approve / reject / modify agent actions |
+
+### Tools & MCP
+
+| Method | Endpoint | Description |
+|--------|----------|------------|
+| `GET` | `/api/tools` | List connected tools |
+| `GET` | `/api/tools/builtin` | List 50+ available MCP servers |
+| `POST` | `/api/tools/connect` | Connect an MCP server |
+| `POST` | `/api/tools/test-scenario` | Run MCP test scenario |
+| `POST` | `/api/suggestions/mcp` | Get smart MCP suggestions |
+
+### Notifications & Messaging
+
+| Method | Endpoint | Description |
+|--------|----------|------------|
+| `GET/POST` | `/api/notifications/channels` | Notification channel CRUD |
+| `POST` | `/api/notifications/channels/:id/test` | Send test notification |
+| `POST` | `/api/webhooks/line` | LINE inbound webhook |
+| `POST` | `/api/webhooks/whatsapp` | WhatsApp inbound webhook |
+| `POST` | `/api/webhooks/messenger` | Messenger inbound webhook |
+| `GET/POST` | `/api/messaging/config` | Messaging platform config |
+
+### SSE Events
+
+| Event | Payload |
+|-------|---------|
+| `agent:status` | `{ agent, status }` |
+| `agent:detail` | `{ agent, currentAction, toolName, inputPreview, outputPreview }` |
+| `pipeline:progress` | `{ phase, stepIndex, totalSteps, description, elapsed_ms }` |
+| `executor:subtask_progress` | `{ subtaskIndex, totalSubtasks, description }` |
+| `result:file` | `{ action, path, size, type }` |
+| `cost:update` | `{ current, limit }` |
+| `approval:request` | `{ id, tool, args, risk }` |
 
 ---
 
-## SSE Events
+## Configuration
 
-| Event | Description |
-|-------|------------|
-| `agent:status` | Agent status change (idle/active/complete/error) |
-| `agent:log` | Agent log message |
-| `agent:detail` | Detailed agent action info (tool name, I/O preview) |
-| `pipeline:progress` | Pipeline phase progress (step X/Y) |
-| `executor:subtask_progress` | Executor subtask progress |
-| `result:file` | File operation result (created/modified/read) |
-| `cost:update` | Real-time cost tracking |
-| `approval:request` | Agent requesting user approval |
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes* | — | Anthropic API key |
+| `JWT_SECRET` | Yes | — | Secret for JWT signing |
+| `PORT` | No | `3456` | Server port |
+
+*At least one AI provider key is required. Additional keys (OpenAI, Google, etc.) can be set through the Settings UI.
+
+### Security Levels
+
+| Level | Behavior |
+|-------|----------|
+| **Strict** | All actions require approval |
+| **Balanced** | Read = auto, Write/Delete = confirm |
+| **Relaxed** | Most actions auto-approved |
 
 ---
 
-## Scripts
+## Commands
 
 ```bash
-npm run dev      # Start both client & server (development)
-npm run server   # Start Express server only
-npm run client   # Start Vite dev server only
-npm run build    # Build client for production
+npm run dev      # Start client + server (development)
+npm run server   # Express server only (port 3456)
+npm run client   # Vite dev server only (port 5173)
+npm run build    # Production build
 npm start        # Alias for npm run dev
 ```
 
 ---
 
-## Environment Variables
+## Troubleshooting
 
-| Variable | Required | Description |
-|----------|----------|------------|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
-| `JWT_SECRET` | Yes | Secret for JWT token signing |
-| `PORT` | No | Server port (default: 3456) |
+| Issue | Solution |
+|-------|---------|
+| `npm install` fails with native module errors | Ensure you have build tools: `xcode-select --install` (macOS) |
+| Port 3456 already in use | Change `PORT` in `.env` or kill the existing process |
+| "ANTHROPIC_API_KEY not set" | Add your key to `.env` file |
+| Database locked errors | Delete `server/db/kage.db*` files and restart |
+| MCP server won't connect | Check the server command works standalone: `npx -y @modelcontextprotocol/server-filesystem /tmp` |
 
-Additional API keys can be configured through the UI for other providers (OpenAI, Google, Groq, etc.).
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+**Built with [Anthropic Claude](https://anthropic.com) + [MCP](https://modelcontextprotocol.io)**
+
+[Report Bug](https://github.com/jun-omise/KAGE/issues) &nbsp;&bull;&nbsp; [Request Feature](https://github.com/jun-omise/KAGE/issues) &nbsp;&bull;&nbsp; [Discussions](https://github.com/jun-omise/KAGE/discussions)
+
+</div>
