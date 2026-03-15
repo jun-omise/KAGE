@@ -24,54 +24,57 @@ Respond in JSON format:
     };
   }
 
-  async validateInput(userMessage) {
+  async validateInput(userMessage, { model } = {}) {
     try {
-      const result = await this.claude.runAgent(this.config, {
+      const { result, usage } = await this.claude.runAgent(this.config, {
         task: 'validate_input',
         input: userMessage,
-      });
+      }, { model });
       return {
         blocked: result.blocked || false,
         reason: result.reason || null,
         warnings: result.warnings || [],
         pii_detected: result.pii_detected || false,
         risk_level: result.risk_level || 'low',
+        usage,
       };
     } catch {
-      return { blocked: false, reason: null, warnings: [], pii_detected: false, risk_level: 'low' };
+      return { blocked: false, reason: null, warnings: [], pii_detected: false, risk_level: 'low', usage: null };
     }
   }
 
-  async validatePlan(plan) {
+  async validatePlan(plan, { model } = {}) {
     try {
-      const result = await this.claude.runAgent(this.config, {
+      const { result, usage } = await this.claude.runAgent(this.config, {
         task: 'validate_plan',
         plan,
-      });
+      }, { model });
       return {
         approved: result.approved !== false,
         requires_approval: result.requires_approval || false,
         approval_reason: result.approval_reason || null,
         warnings: result.warnings || [],
+        usage,
       };
     } catch {
-      return { approved: true, requires_approval: false, approval_reason: null, warnings: [] };
+      return { approved: true, requires_approval: false, approval_reason: null, warnings: [], usage: null };
     }
   }
 
-  async validateOutput(output) {
+  async validateOutput(output, { model } = {}) {
     try {
-      const result = await this.claude.runAgent(this.config, {
+      const { result, usage } = await this.claude.runAgent(this.config, {
         task: 'validate_output',
         output,
-      });
+      }, { model });
       return {
         safe: result.safe !== false,
         pii_detected: result.pii_detected || false,
         warnings: result.warnings || [],
+        usage,
       };
     } catch {
-      return { safe: true, pii_detected: false, warnings: [] };
+      return { safe: true, pii_detected: false, warnings: [], usage: null };
     }
   }
 }

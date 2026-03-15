@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, DollarSign } from 'lucide-react';
+import { ChevronDown, ChevronRight, DollarSign, Bookmark } from 'lucide-react';
 import { useI18n } from '../i18n/index.jsx';
 import ResultPresenter from './ResultPresenter';
 
@@ -107,7 +107,7 @@ function formatInline(text) {
   return parts;
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, onSaveAsTemplate }) {
   const { t } = useI18n();
   const [showTrace, setShowTrace] = useState(false);
   const isUser = message.role === 'user';
@@ -122,6 +122,18 @@ export default function MessageBubble({ message }) {
         }`}
       >
         <SimpleMarkdown content={message.content} />
+
+        {/* Save as Template button (user messages only) */}
+        {isUser && onSaveAsTemplate && (
+          <button
+            onClick={() => onSaveAsTemplate(message.content)}
+            className="flex items-center gap-1 mt-2 text-xs text-white/50 hover:text-white/80 transition-colors"
+            title={t('templates.saveAs') || 'テンプレートとして保存'}
+          >
+            <Bookmark size={12} />
+            <span>{t('templates.saveAs') || 'テンプレート保存'}</span>
+          </button>
+        )}
 
         {/* Cost display */}
         {message.cost && (

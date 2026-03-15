@@ -196,6 +196,34 @@
     "disconnected": "未接続",
     "noSessions": "アクティブなセッションはありません"
   },
+  "templates": {
+    "saveAs": "テンプレートとして保存",
+    "namePlaceholder": "テンプレート名",
+    "descPlaceholder": "説明（オプション）",
+    "text": "テンプレートテキスト",
+    "varHint": "で変数を埋め込み",
+    "detectedVars": "検出された変数",
+    "variables": "変数",
+    "variableSettings": "変数設定",
+    "preview": "プレビュー",
+    "execute": "実行",
+    "noTemplates": "テンプレートがまだありません"
+  },
+  "routing": {
+    "complexity": "複雑度",
+    "simple": "シンプル",
+    "moderate": "普通",
+    "complex": "複雑",
+    "modelRouting": "モデルルーティング",
+    "costSavings": "コスト削減"
+  },
+  "mcpAuto": {
+    "connecting": "ツール自動接続中...",
+    "connected": "ツール接続完了",
+    "failed": "接続失敗",
+    "envRequired": "APIキーが必要です",
+    "setup": "ツール接続中..."
+  },
   "common": {
     "settings": "設定",
     "close": "閉じる",

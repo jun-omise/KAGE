@@ -1,10 +1,11 @@
 import React from 'react';
 import { useI18n } from '../i18n/index.jsx';
 
-const PHASES = ['sentinel_input', 'planning', 'sentinel_plan', 'execution', 'review', 'response'];
+const PHASES = ['sentinel_input', 'mcp_setup', 'planning', 'sentinel_plan', 'execution', 'review', 'response'];
 
 const PHASE_ICONS = {
   sentinel_input: '\uD83D\uDEE1\uFE0F',
+  mcp_setup: '\uD83D\uDD27',
   planning: '\uD83E\uDDE0',
   sentinel_plan: '\uD83D\uDEE1\uFE0F',
   execution: '\u26A1',

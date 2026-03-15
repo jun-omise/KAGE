@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { getDb } from '../db/init.js';
 import aiClient from '../core/ai-client.js';
-import { MODEL_CATALOG, MODEL_PROVIDERS, getModelsByProvider } from '../core/model-registry.js';
+import { MODEL_CATALOG, MODEL_PROVIDERS, getModelsByProvider, getModelsForTier, getCheapestModel } from '../core/model-registry.js';
+import { classifyComplexity, getRoutingPlan } from '../core/model-router.js';
 
 const router = Router();
 
@@ -154,6 +155,56 @@ router.post('/test', async (req, res) => {
       modelId: req.body.modelId,
       error: error.message,
     });
+  }
+});
+
+// GET /api/models/routing - Get current model routing configuration
+router.get('/routing', (req, res) => {
+  try {
+    const mainModelId = aiClient.activeModel;
+    const complexities = ['simple', 'moderate', 'complex'];
+    const routing = {};
+
+    for (const complexity of complexities) {
+      routing[complexity] = getRoutingPlan(complexity, mainModelId);
+    }
+
+    res.json({
+      mainModel: mainModelId,
+      routing,
+      tiers: {
+        fast: getModelsForTier('fast').map(m => ({ id: m.id, name: m.name, provider: m.provider, inputCost: m.inputCost, outputCost: m.outputCost })),
+        balanced: getModelsForTier('balanced').map(m => ({ id: m.id, name: m.name, provider: m.provider, inputCost: m.inputCost, outputCost: m.outputCost })),
+        flagship: getModelsForTier('flagship').map(m => ({ id: m.id, name: m.name, provider: m.provider, inputCost: m.inputCost, outputCost: m.outputCost })),
+      },
+    });
+  } catch (error) {
+    console.error('Get routing error:', error);
+    res.status(500).json({ error: 'Failed to get routing config' });
+  }
+});
+
+// POST /api/models/routing/preview - Preview routing for a message
+router.post('/routing/preview', (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    const complexity = classifyComplexity(message);
+    const mainModelId = aiClient.activeModel;
+    const routing = getRoutingPlan(complexity, mainModelId);
+
+    res.json({
+      message: message.slice(0, 100),
+      complexity,
+      mainModel: mainModelId,
+      routing,
+    });
+  } catch (error) {
+    console.error('Routing preview error:', error);
+    res.status(500).json({ error: 'Failed to preview routing' });
   }
 });
 

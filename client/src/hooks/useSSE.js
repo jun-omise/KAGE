@@ -15,6 +15,7 @@ const INITIAL_STATE = {
   pipelineProgress: null,
   subtaskProgress: null,
   fileResults: [],
+  mcpAutoConnect: [],
 };
 
 export function useSSE(conversationId) {
@@ -220,6 +221,52 @@ export function useSSE(conversationId) {
       }));
     });
 
+    // MCP auto-connect events
+    es.addEventListener('mcp:auto_connecting', (e) => {
+      const data = JSON.parse(e.data);
+      setState(prev => ({
+        ...prev,
+        mcpAutoConnect: [...prev.mcpAutoConnect, { serverId: data.serverId, serverName: data.serverName, status: 'connecting' }],
+      }));
+    });
+
+    es.addEventListener('mcp:auto_connected', (e) => {
+      const data = JSON.parse(e.data);
+      setState(prev => ({
+        ...prev,
+        mcpAutoConnect: prev.mcpAutoConnect.map(s =>
+          s.serverId === data.serverId ? { ...s, status: 'connected', tools: data.tools } : s
+        ),
+      }));
+    });
+
+    es.addEventListener('mcp:auto_failed', (e) => {
+      const data = JSON.parse(e.data);
+      setState(prev => ({
+        ...prev,
+        mcpAutoConnect: prev.mcpAutoConnect.map(s =>
+          s.serverId === data.serverId ? { ...s, status: 'failed', error: data.error } : s
+        ),
+      }));
+    });
+
+    es.addEventListener('mcp:env_required', (e) => {
+      const data = JSON.parse(e.data);
+      setState(prev => ({
+        ...prev,
+        mcpAutoConnect: [...prev.mcpAutoConnect, { serverId: data.serverId, serverName: data.serverName, status: 'env_required', missingKeys: data.missingKeys }],
+      }));
+    });
+
+    // Pipeline routing info
+    es.addEventListener('pipeline:routing', (e) => {
+      const data = JSON.parse(e.data);
+      setState(prev => ({
+        ...prev,
+        pipelineRouting: data,
+      }));
+    });
+
     es.addEventListener('agent:warning', (e) => {
       const data = JSON.parse(e.data);
       setState(prev => ({
@@ -263,6 +310,8 @@ export function useSSE(conversationId) {
       pipelineProgress: null,
       subtaskProgress: null,
       fileResults: [],
+      mcpAutoConnect: [],
+      pipelineRouting: null,
     }));
   }, []);
 
@@ -280,6 +329,8 @@ export function useSSE(conversationId) {
     pipelineProgress: state.pipelineProgress,
     subtaskProgress: state.subtaskProgress,
     fileResults: state.fileResults,
+    mcpAutoConnect: state.mcpAutoConnect,
+    pipelineRouting: state.pipelineRouting,
     clearApproval,
     clearResponseChunks,
     resetAgentStates,

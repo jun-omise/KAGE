@@ -96,6 +96,14 @@ class MCPManager {
     return Array.from(this.clients.keys());
   }
 
+  isServerConnected(serverId) {
+    return this.clients.has(serverId);
+  }
+
+  getConnectedServerIds() {
+    return Array.from(this.clients.keys());
+  }
+
   getRegisteredTools() {
     return Array.from(this.toolRegistry.entries()).map(([name, info]) => ({
       name,

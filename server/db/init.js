@@ -3,7 +3,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, 'kage.db');
+const DB_PATH = process.env.KAGE_DB_PATH || join(__dirname, 'kage.db');
 
 let db;
 
@@ -159,6 +159,37 @@ function initSchema() {
     db.prepare("SELECT status FROM tasks LIMIT 0").get();
   } catch {
     db.exec("ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'active'");
+  }
+
+  // Migration: add template columns to tasks
+  try {
+    db.prepare("SELECT template_text FROM tasks LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tasks ADD COLUMN template_text TEXT");
+  }
+  try {
+    db.prepare("SELECT variables FROM tasks LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tasks ADD COLUMN variables JSON");
+  }
+  try {
+    db.prepare("SELECT source_message_id FROM tasks LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tasks ADD COLUMN source_message_id TEXT");
+  }
+  try {
+    db.prepare("SELECT is_template FROM tasks LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tasks ADD COLUMN is_template BOOLEAN DEFAULT 0");
+  }
+
+  // Migration: add server_id and key to tool_configs for env storage
+  try {
+    db.prepare("SELECT server_id FROM tool_configs LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tool_configs ADD COLUMN server_id TEXT");
+    db.exec("ALTER TABLE tool_configs ADD COLUMN key TEXT");
+    db.exec("ALTER TABLE tool_configs ADD COLUMN value TEXT");
   }
 }
 

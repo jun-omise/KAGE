@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { getDb, closeDb } from './db/init.js';
 import authRoutes from './routes/auth.js';
 import chatRoutes from './routes/chat.js';
@@ -17,6 +19,7 @@ import notificationRoutes from './routes/notifications.js';
 import webhookRoutes from './routes/webhooks.js';
 import messagingConfigRoutes from './routes/messaging-config.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3456;
 
@@ -47,9 +50,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: '0.1.0' });
 });
 
-app.listen(PORT, () => {
+// Production mode: serve client build
+if (process.env.NODE_ENV === 'production' || process.env.ELECTRON) {
+  const clientDist = join(__dirname, '..', 'client', 'dist');
+  app.use(express.static(clientDist));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(join(clientDist, 'index.html'));
+    }
+  });
+}
+
+const server = app.listen(PORT, () => {
   console.log(`KAGE server running on http://localhost:${PORT}`);
 });
+
+// Export for Electron
+export { app, server };
+export default app;
 
 process.on('SIGINT', () => {
   closeDb();

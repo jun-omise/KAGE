@@ -21,19 +21,20 @@ Respond in JSON format:
     };
   }
 
-  async review(originalRequest, plan, results) {
+  async review(originalRequest, plan, results, { model } = {}) {
     try {
-      const result = await this.claude.runAgent(this.config, {
+      const { result, usage } = await this.claude.runAgent(this.config, {
         task: 'review_results',
         original_request: originalRequest,
         plan,
         results,
-      });
+      }, { model });
       return {
         approved: result.approved !== false,
         issues: result.issues || [],
         suggestions: result.suggestions || [],
         confidence: result.confidence || 0.9,
+        usage,
       };
     } catch {
       return {
@@ -41,6 +42,7 @@ Respond in JSON format:
         issues: [],
         suggestions: [],
         confidence: 0.8,
+        usage: null,
       };
     }
   }

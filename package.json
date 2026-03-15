@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "description": "Secure Multi-Agent Personal AI Assistant",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
     "client": "cd client && npx vite --host",
     "start": "npm run dev",
-    "build": "cd client && vite build"
+    "build": "cd client && vite build",
+    "electron:dev": "electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "express": "^4.21.0",
@@ -23,5 +29,11 @@
     "node-cron": "^3.0.0",
     "concurrently": "^9.0.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "extends": "./electron/builder.config.js"
+  }
 }

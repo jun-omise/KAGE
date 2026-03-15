@@ -35,13 +35,14 @@ Important rules:
     };
   }
 
-  async execute(subtask, previousResults = []) {
+  async execute(subtask, previousResults = [], { model } = {}) {
     const maxRetries = 3;
+    let totalUsage = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         // Ask the AI what to do with this subtask
-        const decision = await this.ai.runAgent(this.config, {
+        const { result: decision, usage } = await this.ai.runAgent(this.config, {
           task: 'execute_subtask',
           subtask,
           previous_results: previousResults,
@@ -50,11 +51,16 @@ Important rules:
             description: t.description,
           })),
           attempt: attempt + 1,
-        });
+        }, { model });
+
+        // Accumulate usage across retries
+        totalUsage = this._mergeUsage(totalUsage, usage);
 
         // If AI decides to call a tool
         if (decision.action === 'tool_call' && decision.tool) {
-          return await this._executeToolCall(subtask, decision);
+          const toolResult = await this._executeToolCall(subtask, decision);
+          toolResult.usage = totalUsage;
+          return toolResult;
         }
 
         // Direct answer (no tool needed)
@@ -65,6 +71,7 @@ Important rules:
           details: decision.details || {},
           toolUsed: null,
           error: decision.error || null,
+          usage: totalUsage,
         };
 
       } catch (error) {
@@ -76,11 +83,21 @@ Important rules:
             details: { attempts: maxRetries },
             toolUsed: null,
             error: error.message,
+            usage: totalUsage,
           };
         }
         // Retry
       }
     }
+  }
+
+  _mergeUsage(existing, newUsage) {
+    if (!newUsage) return existing;
+    if (!existing) return newUsage;
+    return {
+      input_tokens: (existing.input_tokens || 0) + (newUsage.input_tokens || 0),
+      output_tokens: (existing.output_tokens || 0) + (newUsage.output_tokens || 0),
+    };
   }
 
   async _executeToolCall(subtask, decision) {

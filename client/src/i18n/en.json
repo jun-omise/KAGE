@@ -196,6 +196,34 @@
     "disconnected": "Disconnected",
     "noSessions": "No active sessions"
   },
+  "templates": {
+    "saveAs": "Save as Template",
+    "namePlaceholder": "Template name",
+    "descPlaceholder": "Description (optional)",
+    "text": "Template Text",
+    "varHint": "to embed variables",
+    "detectedVars": "Detected variables",
+    "variables": "Variables",
+    "variableSettings": "Variable Settings",
+    "preview": "Preview",
+    "execute": "Execute",
+    "noTemplates": "No templates saved yet"
+  },
+  "routing": {
+    "complexity": "Complexity",
+    "simple": "Simple",
+    "moderate": "Moderate",
+    "complex": "Complex",
+    "modelRouting": "Model Routing",
+    "costSavings": "Cost Savings"
+  },
+  "mcpAuto": {
+    "connecting": "Auto-connecting tools...",
+    "connected": "Tools connected",
+    "failed": "Connection failed",
+    "envRequired": "API key required",
+    "setup": "Connecting tools..."
+  },
   "common": {
     "settings": "Settings",
     "close": "Close",

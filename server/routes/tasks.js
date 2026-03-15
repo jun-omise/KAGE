@@ -5,17 +5,30 @@ import orchestrator from '../core/orchestrator.js';
 
 const router = Router();
 
-// GET / - List all tasks
+// GET / - List all tasks (with optional is_template filter)
 router.get('/', (req, res) => {
   try {
     const db = getDb();
-    const tasks = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all();
+    const { is_template } = req.query;
+
+    let query = 'SELECT * FROM tasks';
+    const params = [];
+
+    if (is_template === 'true') {
+      query += ' WHERE is_template = 1';
+    } else if (is_template === 'false') {
+      query += ' WHERE (is_template IS NULL OR is_template = 0)';
+    }
+
+    query += ' ORDER BY created_at DESC';
+    const tasks = db.prepare(query).all(...params);
 
     const parsed = tasks.map((t) => ({
       ...t,
       trigger_config: t.trigger_config ? JSON.parse(t.trigger_config) : null,
       permissions: t.permissions ? JSON.parse(t.permissions) : null,
       settings: t.settings ? JSON.parse(t.settings) : null,
+      variables: t.variables ? JSON.parse(t.variables) : null,
     }));
 
     res.json(parsed);
@@ -25,11 +38,15 @@ router.get('/', (req, res) => {
   }
 });
 
-// POST / - Create task
+// POST / - Create task (supports template fields)
 router.post('/', (req, res) => {
   try {
     const db = getDb();
-    const { name, description, trigger_type, trigger_config, permissions, settings } = req.body;
+    const {
+      name, description, trigger_type, trigger_config,
+      permissions, settings,
+      template_text, variables, source_message_id, is_template,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Task name is required' });
@@ -39,8 +56,9 @@ router.post('/', (req, res) => {
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO tasks (id, name, description, trigger_type, trigger_config, permissions, settings, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+      INSERT INTO tasks (id, name, description, trigger_type, trigger_config, permissions, settings, status,
+        template_text, variables, source_message_id, is_template, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       name,
@@ -49,6 +67,10 @@ router.post('/', (req, res) => {
       trigger_config ? JSON.stringify(trigger_config) : null,
       permissions ? JSON.stringify(permissions) : null,
       settings ? JSON.stringify(settings) : null,
+      template_text || null,
+      variables ? JSON.stringify(variables) : null,
+      source_message_id || null,
+      is_template ? 1 : 0,
       now,
       now
     );
@@ -61,6 +83,10 @@ router.post('/', (req, res) => {
       trigger_config,
       permissions,
       settings,
+      template_text,
+      variables,
+      source_message_id,
+      is_template: !!is_template,
       status: 'active',
       created_at: now,
       updated_at: now,
@@ -71,12 +97,16 @@ router.post('/', (req, res) => {
   }
 });
 
-// PUT /:id - Update task
+// PUT /:id - Update task (supports template fields)
 router.put('/:id', (req, res) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { name, description, trigger_type, trigger_config, permissions, settings, status } = req.body;
+    const {
+      name, description, trigger_type, trigger_config,
+      permissions, settings, status,
+      template_text, variables, is_template,
+    } = req.body;
 
     const existing = db.prepare('SELECT id FROM tasks WHERE id = ?').get(id);
     if (!existing) {
@@ -94,6 +124,9 @@ router.put('/:id', (req, res) => {
     if (permissions !== undefined) { updates.push('permissions = ?'); values.push(JSON.stringify(permissions)); }
     if (settings !== undefined) { updates.push('settings = ?'); values.push(JSON.stringify(settings)); }
     if (status !== undefined) { updates.push('status = ?'); values.push(status); }
+    if (template_text !== undefined) { updates.push('template_text = ?'); values.push(template_text); }
+    if (variables !== undefined) { updates.push('variables = ?'); values.push(JSON.stringify(variables)); }
+    if (is_template !== undefined) { updates.push('is_template = ?'); values.push(is_template ? 1 : 0); }
 
     updates.push('updated_at = ?');
     values.push(now);
@@ -107,6 +140,7 @@ router.put('/:id', (req, res) => {
       trigger_config: updated.trigger_config ? JSON.parse(updated.trigger_config) : null,
       permissions: updated.permissions ? JSON.parse(updated.permissions) : null,
       settings: updated.settings ? JSON.parse(updated.settings) : null,
+      variables: updated.variables ? JSON.parse(updated.variables) : null,
     });
   } catch (error) {
     console.error('Update task error:', error);
@@ -135,15 +169,27 @@ router.delete('/:id', (req, res) => {
   }
 });
 
-// POST /:id/run - Manual task execution (real orchestrator integration)
+// POST /:id/run - Manual task execution (supports template variable substitution)
 router.post('/:id/run', async (req, res) => {
   const db = getDb();
   const { id } = req.params;
+  const { variables } = req.body;
 
   try {
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    // Build the message: if template, substitute variables
+    let message = task.description || task.name;
+    if (task.is_template && task.template_text) {
+      message = task.template_text;
+      if (variables && typeof variables === 'object') {
+        for (const [key, value] of Object.entries(variables)) {
+          message = message.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+        }
+      }
     }
 
     const runId = uuidv4();
@@ -156,14 +202,14 @@ router.post('/:id/run', async (req, res) => {
     `).run(runId, id, startedAt);
 
     // Return immediately so the client knows execution started
-    res.json({ success: true, runId, taskId: id, status: 'running' });
+    res.json({ success: true, runId, taskId: id, status: 'running', message });
 
     // Execute asynchronously through the orchestrator
     try {
       const result = await orchestrator.processMessage({
         conversationId: `task_${id}_${runId}`,
         messageId: runId,
-        message: task.description || task.name,
+        message,
         attachments: null,
       });
 

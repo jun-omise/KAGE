@@ -165,3 +165,30 @@ export function getProviderForModel(modelId) {
   if (!model) return null;
   return MODEL_PROVIDERS[model.provider] || null;
 }
+
+/**
+ * Get all models for a given tier, optionally filtered by provider.
+ * @param {string} tier - 'fast', 'balanced', or 'flagship'
+ * @param {string} [providerId] - Optional provider filter
+ * @returns {Array} Matching models
+ */
+export function getModelsForTier(tier, providerId) {
+  return MODEL_CATALOG.filter(m => {
+    if (m.tier !== tier) return false;
+    if (providerId && m.provider !== providerId) return false;
+    if (m.id === 'openrouter/auto') return false;
+    return true;
+  });
+}
+
+/**
+ * Get the cheapest model for a tier, optionally within a provider.
+ * @param {string} tier - 'fast', 'balanced', or 'flagship'
+ * @param {string} [providerId] - Optional provider filter
+ * @returns {object|null} Cheapest model entry
+ */
+export function getCheapestModel(tier, providerId) {
+  const models = getModelsForTier(tier, providerId);
+  if (models.length === 0) return null;
+  return models.sort((a, b) => (a.inputCost + a.outputCost) - (b.inputCost + b.outputCost))[0];
+}

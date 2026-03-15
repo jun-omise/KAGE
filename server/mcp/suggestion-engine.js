@@ -179,6 +179,14 @@ export class MCPSuggestionEngine {
   }
 }
 
+  /**
+   * Internal method — returns only server IDs (for auto-resolver use).
+   */
+  suggestServerIds(message) {
+    return this.suggest(message).map(s => s.serverId);
+  }
+}
+
 // Singleton
 const suggestionEngine = new MCPSuggestionEngine();
 export default suggestionEngine;

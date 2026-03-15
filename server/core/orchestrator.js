@@ -11,6 +11,9 @@ import { CostTracker } from '../security/cost-tracker.js';
 import { AuditLogger } from '../security/audit-logger.js';
 import { getDb } from '../db/init.js';
 import notificationService from '../notifications/service.js';
+import { classifyComplexity, getModelForAgent, getRoutingPlan } from './model-router.js';
+import { TokenTracker } from './token-tracker.js';
+import autoResolver from '../mcp/auto-resolver.js';
 
 class AgentOrchestrator {
   constructor() {
@@ -51,6 +54,21 @@ class AgentOrchestrator {
     const startTime = Date.now();
     this.activeTasks.set(taskId, { conversationId, cancelled: false });
     this.loopDetector.startTask(taskId);
+
+    // Initialize per-session token tracker
+    const tokenTracker = new TokenTracker();
+
+    // Classify complexity and determine model routing
+    const complexity = classifyComplexity(userMessage);
+    const mainModelId = this.ai.activeModel;
+    const routingPlan = getRoutingPlan(complexity, mainModelId);
+
+    // Emit routing info to client
+    sseManager.send(conversationId, 'pipeline:routing', {
+      complexity,
+      mainModel: mainModelId,
+      routing: routingPlan,
+    });
 
     // Notify task start
     notificationService.notify('task_start', { taskId, conversationId, message: userMessage.slice(0, 100) }).catch(() => {});
@@ -98,13 +116,15 @@ class AgentOrchestrator {
       let totalSteps = 6; // sentinel_input + planning + sentinel_plan + execution(1) + review + response
 
       // Step 1: Sentinel — input validation
+      const sentinelModel = getModelForAgent('sentinel', complexity, mainModelId);
       this._emitProgress(conversationId, 'sentinel_input', 1, totalSteps, 'Validating input...', startTime);
       const sentinelStart = Date.now();
-      sseManager.send(conversationId, 'agent:start', { agent: 'sentinel', action: 'Validating input...' });
-      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Input validation', inputPreview: userMessage.slice(0, 200) });
-      const inputCheck = await this.agents.sentinel.validateInput(userMessage);
+      sseManager.send(conversationId, 'agent:start', { agent: 'sentinel', action: 'Validating input...', model: sentinelModel });
+      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Input validation', inputPreview: userMessage.slice(0, 200), model: sentinelModel });
+      const inputCheck = await this.agents.sentinel.validateInput(userMessage, { model: sentinelModel });
       const sentinelDuration = Date.now() - sentinelStart;
-      trace.push({ agent: 'sentinel', phase: 'input_check', result: inputCheck, duration_ms: sentinelDuration });
+      if (inputCheck.usage) tokenTracker.record('sentinel', sentinelModel, inputCheck.usage);
+      trace.push({ agent: 'sentinel', phase: 'input_check', result: inputCheck, duration_ms: sentinelDuration, model: sentinelModel });
       sseManager.send(conversationId, 'agent:complete', { agent: 'sentinel', result: 'success', duration_ms: sentinelDuration });
       this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Complete', outputPreview: JSON.stringify(inputCheck).slice(0, 200) });
       if (inputCheck.blocked) {
@@ -112,16 +132,29 @@ class AgentOrchestrator {
         return { response: inputCheck.reason, trace, cost: 0, blocked: true };
       }
 
-      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
+
+      // Auto MCP: resolve servers from message keywords
+      try {
+        this._emitProgress(conversationId, 'mcp_setup', 1, totalSteps, 'Connecting tools...', startTime);
+        const autoConnected = await autoResolver.resolveForMessage(userMessage, conversationId);
+        if (autoConnected.length > 0) {
+          trace.push({ agent: 'system', phase: 'mcp_auto_connect', result: { connected: autoConnected } });
+        }
+      } catch (e) {
+        console.error('Auto MCP resolve error:', e);
+      }
 
       // Step 2: Planner — task decomposition
+      const plannerModel = getModelForAgent('planner', complexity, mainModelId);
       this._emitProgress(conversationId, 'planning', 2, totalSteps, 'Creating execution plan...', startTime);
       const plannerStart = Date.now();
-      sseManager.send(conversationId, 'agent:start', { agent: 'planner', action: 'Analyzing task...' });
-      this._emitAgentDetail(conversationId, 'planner', { currentAction: 'Task analysis & decomposition', inputPreview: userMessage.slice(0, 200) });
-      const plan = await this.agents.planner.createPlan(userMessage);
+      sseManager.send(conversationId, 'agent:start', { agent: 'planner', action: 'Analyzing task...', model: plannerModel });
+      this._emitAgentDetail(conversationId, 'planner', { currentAction: 'Task analysis & decomposition', inputPreview: userMessage.slice(0, 200), model: plannerModel });
+      const plan = await this.agents.planner.createPlan(userMessage, { model: plannerModel });
       const plannerDuration = Date.now() - plannerStart;
-      trace.push({ agent: 'planner', phase: 'planning', result: plan, duration_ms: plannerDuration });
+      if (plan.usage) tokenTracker.record('planner', plannerModel, plan.usage);
+      trace.push({ agent: 'planner', phase: 'planning', result: plan, duration_ms: plannerDuration, model: plannerModel });
       sseManager.send(conversationId, 'agent:complete', { agent: 'planner', result: 'success', duration_ms: plannerDuration });
 
       // Update totalSteps now that we know how many subtasks
@@ -132,16 +165,27 @@ class AgentOrchestrator {
         outputPreview: `Plan: ${subtaskCount} subtask(s) - ${plan.summary || ''}`.slice(0, 200),
       });
 
-      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
+
+      // Auto MCP: resolve servers from plan's required tools
+      try {
+        const planAutoConnected = await autoResolver.resolveForPlan(plan, conversationId);
+        if (planAutoConnected.length > 0) {
+          trace.push({ agent: 'system', phase: 'mcp_plan_connect', result: { connected: planAutoConnected } });
+        }
+      } catch (e) {
+        console.error('Auto MCP plan resolve error:', e);
+      }
 
       // Step 3: Sentinel — plan validation
       this._emitProgress(conversationId, 'sentinel_plan', 3, totalSteps, 'Validating execution plan...', startTime);
       const planCheckStart = Date.now();
-      sseManager.send(conversationId, 'agent:start', { agent: 'sentinel', action: 'Validating plan...' });
-      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Plan validation', inputPreview: `${subtaskCount} subtasks` });
-      const planCheck = await this.agents.sentinel.validatePlan(plan);
+      sseManager.send(conversationId, 'agent:start', { agent: 'sentinel', action: 'Validating plan...', model: sentinelModel });
+      this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Plan validation', inputPreview: `${subtaskCount} subtasks`, model: sentinelModel });
+      const planCheck = await this.agents.sentinel.validatePlan(plan, { model: sentinelModel });
       const planCheckDuration = Date.now() - planCheckStart;
-      trace.push({ agent: 'sentinel', phase: 'plan_check', result: planCheck, duration_ms: planCheckDuration });
+      if (planCheck.usage) tokenTracker.record('sentinel', sentinelModel, planCheck.usage);
+      trace.push({ agent: 'sentinel', phase: 'plan_check', result: planCheck, duration_ms: planCheckDuration, model: sentinelModel });
       sseManager.send(conversationId, 'agent:complete', { agent: 'sentinel', result: 'success', duration_ms: planCheckDuration });
       this._emitAgentDetail(conversationId, 'sentinel', { currentAction: 'Complete', outputPreview: planCheck.requires_approval ? 'Approval required' : 'Plan approved' });
 
@@ -150,10 +194,11 @@ class AgentOrchestrator {
       if (loopCheck.exceeded) {
         this.auditLogger.log('alert', { conversationId, type: 'loop_detected', reason: loopCheck.reason });
         sseManager.send(conversationId, 'agent:warning', { agent: 'system', message: `Loop detected: ${loopCheck.reason}` });
+        const sessionTotal = tokenTracker.getSessionTotal();
         return {
           response: `⚠️ Safety limit triggered: ${loopCheck.reason}. Task halted.`,
           trace,
-          cost: this.calculateTotalCost(trace),
+          cost: sessionTotal.totalCost,
           blocked: true,
         };
       }
@@ -189,9 +234,10 @@ class AgentOrchestrator {
         this.auditLogger.log('approved', { conversationId, approvalId, status: 'approved' });
       }
 
-      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+      if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
 
       // Step 5: Executor — execute subtasks
+      const executorModel = getModelForAgent('executor', complexity, mainModelId);
       const results = [];
       const fileResults = [];
       const subtasks = plan.subtasks || [{ id: 1, description: userMessage }];
@@ -219,16 +265,19 @@ class AgentOrchestrator {
           agent: 'executor',
           action: `Executing: ${subtask.description}`,
           progress: `${i + 1}/${subtasks.length}`,
+          model: executorModel,
         });
         this._emitAgentDetail(conversationId, 'executor', {
           currentAction: `Subtask ${i + 1}/${subtasks.length}: ${subtask.description}`,
           inputPreview: JSON.stringify(subtask).slice(0, 200),
+          model: executorModel,
         });
 
-        const result = await this.agents.executor.execute(subtask, results);
+        const result = await this.agents.executor.execute(subtask, results, { model: executorModel });
         const execDuration = Date.now() - execStart;
+        if (result.usage) tokenTracker.record('executor', executorModel, result.usage);
         results.push(result);
-        trace.push({ agent: 'executor', phase: 'execution', subtask: subtask.id, result, duration_ms: execDuration });
+        trace.push({ agent: 'executor', phase: 'execution', subtask: subtask.id, result, duration_ms: execDuration, model: executorModel });
 
         // Detect file operations for result presentation
         if (result.toolUsed && result.details?.tool) {
@@ -266,36 +315,44 @@ class AgentOrchestrator {
           });
         }
 
-        if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace);
+        if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
 
         // Mid-execution loop check
         const midLoopCheck = this.loopDetector.checkLimits(taskId, securityConfig);
         if (midLoopCheck.exceeded) {
           this.auditLogger.log('alert', { conversationId, type: 'loop_mid_execution', reason: midLoopCheck.reason });
+          const sessionTotal = tokenTracker.getSessionTotal();
           return {
             response: `⚠️ Safety limit during execution: ${midLoopCheck.reason}. Partial results available.`,
             trace,
-            cost: this.calculateTotalCost(trace),
+            cost: sessionTotal.totalCost,
             blocked: true,
           };
         }
       }
 
       // Step 6: Reviewer — verification
+      const reviewerModel = getModelForAgent('reviewer', complexity, mainModelId);
       this._emitProgress(conversationId, 'review', totalSteps - 1, totalSteps, 'Reviewing results...', startTime);
       const reviewerStart = Date.now();
-      sseManager.send(conversationId, 'agent:start', { agent: 'reviewer', action: 'Verifying results...' });
-      this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Verifying execution results', inputPreview: `${results.length} result(s)` });
-      const review = await this.agents.reviewer.review(userMessage, plan, results);
+      sseManager.send(conversationId, 'agent:start', { agent: 'reviewer', action: 'Verifying results...', model: reviewerModel });
+      this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Verifying execution results', inputPreview: `${results.length} result(s)`, model: reviewerModel });
+      const review = await this.agents.reviewer.review(userMessage, plan, results, { model: reviewerModel });
       const reviewerDuration = Date.now() - reviewerStart;
-      trace.push({ agent: 'reviewer', phase: 'review', result: review, duration_ms: reviewerDuration });
+      if (review.usage) tokenTracker.record('reviewer', reviewerModel, review.usage);
+      trace.push({ agent: 'reviewer', phase: 'review', result: review, duration_ms: reviewerDuration, model: reviewerModel });
       sseManager.send(conversationId, 'agent:complete', { agent: 'reviewer', result: 'success', duration_ms: reviewerDuration });
       this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Complete', outputPreview: JSON.stringify(review).slice(0, 200) });
 
       // Step 7: Generate final response
+      const finalResponseModel = getModelForAgent('final_response', complexity, mainModelId);
       this._emitProgress(conversationId, 'response', totalSteps, totalSteps, 'Generating response...', startTime);
-      const finalResponse = await this.generateFinalResponse(userMessage, plan, results, review);
-      const totalCost = this.calculateTotalCost(trace);
+      const { response: finalResponse, usage: finalUsage } = await this.generateFinalResponse(userMessage, plan, results, review, finalResponseModel);
+      if (finalUsage) tokenTracker.record('final_response', finalResponseModel, finalUsage);
+
+      // Get real cost from token tracker
+      const sessionTotal = tokenTracker.getSessionTotal();
+      const totalCost = sessionTotal.totalCost;
       const totalTime = Date.now() - startTime;
 
       // --- Record cost ---
@@ -321,6 +378,8 @@ class AgentOrchestrator {
         total_cost: totalCost,
         total_time_ms: totalTime,
         agents_used: [...new Set(trace.map(t => t.agent))],
+        complexity,
+        token_breakdown: sessionTotal.breakdown,
       });
 
       // Emit file results
@@ -328,10 +387,16 @@ class AgentOrchestrator {
         sseManager.send(conversationId, 'result:file', fr);
       }
 
-      // Stream final response
+      // Stream final response with real cost data
       sseManager.send(conversationId, 'response:done', {
         total_cost: `$${totalCost.toFixed(4)}`,
         total_time_ms: totalTime,
+        complexity,
+        token_usage: {
+          input: sessionTotal.totalInputTokens,
+          output: sessionTotal.totalOutputTokens,
+        },
+        routing: routingPlan,
       });
 
       this.activeTasks.delete(taskId);
@@ -349,6 +414,8 @@ class AgentOrchestrator {
         trace,
         cost: totalCost,
         tools_used: this.extractToolsUsed(trace),
+        complexity,
+        token_usage: sessionTotal,
       };
     } catch (error) {
       this.activeTasks.delete(taskId);
@@ -361,11 +428,12 @@ class AgentOrchestrator {
     }
   }
 
-  _cancelledResponse(trace) {
-    return { response: 'Task cancelled.', trace, cost: this.calculateTotalCost(trace) };
+  _cancelledResponse(trace, tokenTracker) {
+    const sessionTotal = tokenTracker ? tokenTracker.getSessionTotal() : { totalCost: 0 };
+    return { response: 'Task cancelled.', trace, cost: sessionTotal.totalCost };
   }
 
-  async generateFinalResponse(userMessage, plan, results, review) {
+  async generateFinalResponse(userMessage, plan, results, review, model) {
     const messages = [
       {
         role: 'user',
@@ -383,10 +451,15 @@ Respond in the same language as the user's message.`,
     const response = await this.ai.chat(messages, {
       systemPrompt: 'You are KAGE, a helpful AI assistant. Generate a concise, natural response based on the provided context.',
       maxTokens: 2048,
+      model,
     });
 
     const textContent = response.content.find(c => c.type === 'text');
-    return textContent?.text || 'I apologize, I was unable to generate a response.';
+    const usage = response.usage || null;
+    return {
+      response: textContent?.text || 'I apologize, I was unable to generate a response.',
+      usage,
+    };
   }
 
   async waitForApproval(approvalId, timeoutMs = 300000) {
@@ -434,8 +507,8 @@ Respond in the same language as the user's message.`,
   }
 
   calculateTotalCost(trace) {
-    // Sonnet pricing: ~$3/MTok input, ~$15/MTok output
-    // Each agent call ≈ ~500 input + ~800 output tokens avg
+    // Legacy method — kept for backward compatibility
+    // Real cost is now computed by TokenTracker
     const agentCalls = trace.length;
     const estimatedInputTokens = agentCalls * 500;
     const estimatedOutputTokens = agentCalls * 800;

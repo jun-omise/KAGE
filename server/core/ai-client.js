@@ -219,12 +219,18 @@ class AIClient {
     const textContent = response.content.find(c => c.type === 'text');
     const text = textContent?.text || '';
 
+    // Extract usage data from the response
+    const usage = response.usage || null;
+
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        return { result, usage };
+      }
     } catch {}
 
-    return { raw: text };
+    return { result: { raw: text }, usage };
   }
 
   /**
