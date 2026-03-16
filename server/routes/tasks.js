@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/init.js';
 import orchestrator from '../core/orchestrator.js';
+import scheduler from '../core/scheduler.js';
 
 const router = Router();
 
@@ -75,7 +76,7 @@ router.post('/', (req, res) => {
       now
     );
 
-    res.status(201).json({
+    const created = {
       id,
       name,
       description,
@@ -90,7 +91,14 @@ router.post('/', (req, res) => {
       status: 'active',
       created_at: now,
       updated_at: now,
-    });
+    };
+
+    res.status(201).json(created);
+
+    // Schedule cron job if applicable
+    if (trigger_type === 'cron') {
+      scheduler.scheduleById(id);
+    }
   } catch (error) {
     console.error('Create task error:', error);
     res.status(500).json({ error: 'Failed to create task' });
@@ -104,7 +112,7 @@ router.put('/:id', (req, res) => {
     const { id } = req.params;
     const {
       name, description, trigger_type, trigger_config,
-      permissions, settings, status,
+      permissions, settings, status, enabled,
       template_text, variables, is_template,
     } = req.body;
 
@@ -124,6 +132,7 @@ router.put('/:id', (req, res) => {
     if (permissions !== undefined) { updates.push('permissions = ?'); values.push(JSON.stringify(permissions)); }
     if (settings !== undefined) { updates.push('settings = ?'); values.push(JSON.stringify(settings)); }
     if (status !== undefined) { updates.push('status = ?'); values.push(status); }
+    if (enabled !== undefined) { updates.push('enabled = ?'); values.push(enabled ? 1 : 0); }
     if (template_text !== undefined) { updates.push('template_text = ?'); values.push(template_text); }
     if (variables !== undefined) { updates.push('variables = ?'); values.push(JSON.stringify(variables)); }
     if (is_template !== undefined) { updates.push('is_template = ?'); values.push(is_template ? 1 : 0); }
@@ -142,6 +151,9 @@ router.put('/:id', (req, res) => {
       settings: updated.settings ? JSON.parse(updated.settings) : null,
       variables: updated.variables ? JSON.parse(updated.variables) : null,
     });
+
+    // Reschedule cron job (handles enable/disable, cron change, type change)
+    scheduler.scheduleById(id);
   } catch (error) {
     console.error('Update task error:', error);
     res.status(500).json({ error: 'Failed to update task' });
@@ -158,6 +170,9 @@ router.delete('/:id', (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: 'Task not found' });
     }
+
+    // Cancel scheduled job before deleting
+    scheduler.cancel(id);
 
     db.prepare('DELETE FROM task_runs WHERE task_id = ?').run(id);
     db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
@@ -254,6 +269,17 @@ router.get('/:id/history', (req, res) => {
   } catch (error) {
     console.error('Task history error:', error);
     res.status(500).json({ error: 'Failed to get task history' });
+  }
+});
+
+// GET /scheduler - Get scheduler status
+router.get('/scheduler/status', (req, res) => {
+  try {
+    const status = scheduler.getStatus();
+    res.json({ jobs: status, count: status.length });
+  } catch (error) {
+    console.error('Scheduler status error:', error);
+    res.status(500).json({ error: 'Failed to get scheduler status' });
   }
 });
 

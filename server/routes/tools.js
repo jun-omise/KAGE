@@ -4,6 +4,7 @@ import { getDb } from '../db/init.js';
 import mcpManager from '../mcp/client.js';
 import { BUILTIN_MCP_SERVERS } from '../mcp/builtin-servers.js';
 import { TEST_SCENARIOS, runTestScenario } from '../mcp/test-scenarios.js';
+import skillLoader from '../mcp/skill-loader.js';
 
 const router = Router();
 
@@ -241,6 +242,85 @@ router.post('/test-scenario', async (req, res) => {
   } catch (error) {
     console.error('Test scenario error:', error);
     res.status(500).json({ error: error.message || 'Failed to run test scenario' });
+  }
+});
+
+// ══════════════════════════════════════
+// Skill System Endpoints
+// ══════════════════════════════════════
+
+// GET /skills - List all loaded skills
+router.get('/skills', (req, res) => {
+  try {
+    const skills = skillLoader.getAll();
+    res.json(skills.map(s => ({
+      name: s.name,
+      description: s.description,
+      source: s.source,
+      enabled: s.enabled,
+      verified: s.verified,
+      dependenciesMet: s.dependenciesMet,
+      metadata: s.metadata,
+      path: s.path,
+    })));
+  } catch (error) {
+    console.error('List skills error:', error);
+    res.status(500).json({ error: 'Failed to list skills' });
+  }
+});
+
+// PUT /skills/:name/enable - Enable or disable a skill
+router.put('/skills/:name/enable', (req, res) => {
+  try {
+    const { name } = req.params;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled (boolean) is required' });
+    }
+
+    const success = skillLoader.setEnabled(name, enabled);
+    if (!success) {
+      return res.status(404).json({ error: `Skill "${name}" not found` });
+    }
+
+    res.json({ success: true, name, enabled });
+  } catch (error) {
+    console.error('Toggle skill error:', error);
+    res.status(500).json({ error: 'Failed to toggle skill' });
+  }
+});
+
+// POST /skills/install - Install a skill from a local path
+router.post('/skills/install', async (req, res) => {
+  try {
+    const { path: sourcePath } = req.body;
+
+    if (!sourcePath) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+
+    const result = await skillLoader.installFromPath(sourcePath);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({ success: true, name: result.name });
+  } catch (error) {
+    console.error('Install skill error:', error);
+    res.status(500).json({ error: 'Failed to install skill' });
+  }
+});
+
+// POST /skills/reload - Reload all skills from disk
+router.post('/skills/reload', (req, res) => {
+  try {
+    skillLoader.reload();
+    const skills = skillLoader.getAll();
+    res.json({ success: true, count: skills.length });
+  } catch (error) {
+    console.error('Reload skills error:', error);
+    res.status(500).json({ error: 'Failed to reload skills' });
   }
 });
 

@@ -19,6 +19,8 @@ import notificationRoutes from './routes/notifications.js';
 import webhookRoutes from './routes/webhooks.js';
 import messagingConfigRoutes from './routes/messaging-config.js';
 import taskQueueRoutes from './routes/task-queue.js';
+import scheduler from './core/scheduler.js';
+import skillLoader from './mcp/skill-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -29,6 +31,12 @@ app.use(express.json({ limit: '10mb' }));
 
 // Initialize database
 getDb();
+
+// Initialize cron scheduler (loads active cron tasks from DB)
+scheduler.init();
+
+// Initialize skill loader (scans SKILL.md files)
+skillLoader.init();
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -72,11 +80,13 @@ export { app, server };
 export default app;
 
 process.on('SIGINT', () => {
+  scheduler.cancelAll();
   closeDb();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
+  scheduler.cancelAll();
   closeDb();
   process.exit(0);
 });

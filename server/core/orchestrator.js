@@ -16,6 +16,7 @@ import { classifyComplexity, getModelForAgent, getRoutingPlan } from './model-ro
 import { TokenTracker } from './token-tracker.js';
 import autoResolver from '../mcp/auto-resolver.js';
 import mcpManager from '../mcp/client.js';
+import skillLoader from '../mcp/skill-loader.js';
 
 class AgentOrchestrator {
   constructor() {
@@ -300,7 +301,9 @@ class AgentOrchestrator {
           model: executorModel,
         });
 
-        const result = await this.agents.executor.execute(subtask, results, { model: executorModel, qualityResearch });
+        // Inject skill instructions into executor context
+        const skillInstructions = skillLoader.buildPromptInstructions();
+        const result = await this.agents.executor.execute(subtask, results, { model: executorModel, qualityResearch, skillInstructions });
         const execDuration = Date.now() - execStart;
         if (result.usage) tokenTracker.record('executor', executorModel, result.usage);
         results.push(result);

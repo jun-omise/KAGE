@@ -76,12 +76,14 @@ export default function TaskBuilder() {
   }, []);
 
   const openEdit = useCallback((task) => {
+    const triggerConfig = typeof task.trigger_config === 'string'
+      ? JSON.parse(task.trigger_config) : task.trigger_config;
     setForm({
       name: task.name || '',
       description: task.description || '',
-      trigger: task.trigger || 'manual',
-      cron: task.cron || '',
-      enabled: task.enabled !== false,
+      trigger: task.trigger_type === 'cron' ? 'schedule' : (task.trigger_type || 'manual'),
+      cron: triggerConfig?.cron || '',
+      enabled: task.enabled !== 0 && task.enabled !== false,
     });
     setEditingId(task.id);
     setPlan(null);
@@ -146,10 +148,24 @@ export default function TaskBuilder() {
     setSaving(true);
     setError('');
     try {
-      const payload = { ...form };
+      // Map frontend form fields to backend schema
+      const triggerType = form.trigger === 'schedule' ? 'cron' : form.trigger;
+      const payload = {
+        name: form.name,
+        description: form.description,
+        trigger_type: triggerType,
+        enabled: form.enabled,
+      };
+
+      // Build trigger_config for cron tasks
+      if (triggerType === 'cron' && form.cron) {
+        payload.trigger_config = { cron: form.cron };
+      }
+
       if (plan) {
         payload.plan = plan;
       }
+
       const url = editingId ? `/api/tasks/${editingId}` : '/api/tasks';
       const method = editingId ? 'PUT' : 'POST';
       const res = await fetch(url, {

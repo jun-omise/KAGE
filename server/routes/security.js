@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { getDb } from '../db/init.js';
 import orchestrator from '../core/orchestrator.js';
+import { getShellPolicy, setCustomPolicy, getCustomPolicies, analyzeCommand } from '../security/shell-policy.js';
+import { getSandboxConfig } from '../security/sandbox.js';
 
 const router = Router();
 
@@ -152,6 +154,69 @@ router.post('/kill', (req, res) => {
   } catch (error) {
     console.error('Kill all error:', error);
     res.status(500).json({ error: 'Failed to stop agents' });
+  }
+});
+
+// ══════════════════════════════════════
+// Shell Policy Endpoints
+// ══════════════════════════════════════
+
+// GET /shell-policy - Get shell command policy
+router.get('/shell-policy', (req, res) => {
+  try {
+    res.json(getShellPolicy());
+  } catch (error) {
+    console.error('Get shell policy error:', error);
+    res.status(500).json({ error: 'Failed to get shell policy' });
+  }
+});
+
+// POST /shell-policy/analyze - Analyze a command before execution
+router.post('/shell-policy/analyze', (req, res) => {
+  try {
+    const { command } = req.body;
+    if (!command) {
+      return res.status(400).json({ error: 'command is required' });
+    }
+    res.json(analyzeCommand(command));
+  } catch (error) {
+    console.error('Analyze command error:', error);
+    res.status(500).json({ error: 'Failed to analyze command' });
+  }
+});
+
+// PUT /shell-policy/custom - Set custom policy for a command
+router.put('/shell-policy/custom', (req, res) => {
+  try {
+    const { command, policy } = req.body;
+    if (!command || !['allowed', 'approval', 'blocked'].includes(policy)) {
+      return res.status(400).json({ error: 'command and policy (allowed|approval|blocked) are required' });
+    }
+    setCustomPolicy(command, policy);
+    res.json({ success: true, command, policy });
+  } catch (error) {
+    console.error('Set shell policy error:', error);
+    res.status(500).json({ error: 'Failed to set shell policy' });
+  }
+});
+
+// GET /shell-policy/custom - Get all custom policies
+router.get('/shell-policy/custom', (req, res) => {
+  try {
+    res.json(getCustomPolicies());
+  } catch (error) {
+    console.error('Get custom policies error:', error);
+    res.status(500).json({ error: 'Failed to get custom policies' });
+  }
+});
+
+// GET /sandbox - Get sandbox configuration
+router.get('/sandbox', (req, res) => {
+  try {
+    res.json(getSandboxConfig());
+  } catch (error) {
+    console.error('Get sandbox config error:', error);
+    res.status(500).json({ error: 'Failed to get sandbox config' });
   }
 });
 

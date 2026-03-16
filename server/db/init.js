@@ -185,6 +185,13 @@ function initSchema() {
     db.exec("ALTER TABLE tasks ADD COLUMN is_template BOOLEAN DEFAULT 0");
   }
 
+  // Migration: add enabled column to tasks
+  try {
+    db.prepare("SELECT enabled FROM tasks LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE tasks ADD COLUMN enabled BOOLEAN DEFAULT 1");
+  }
+
   // Migration: add server_id and key to tool_configs for env storage
   try {
     db.prepare("SELECT server_id FROM tool_configs LIMIT 0").get();

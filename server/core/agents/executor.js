@@ -1,5 +1,6 @@
 import mcpManager from '../../mcp/client.js';
 import { checkPermission } from '../../mcp/permission-check.js';
+import { analyzeCommand } from '../../security/shell-policy.js';
 
 export class ExecutorAgent {
   constructor(aiClient) {
@@ -122,7 +123,7 @@ QUALITY RULES:
     };
   }
 
-  async execute(subtask, previousResults = [], { model, qualityResearch } = {}) {
+  async execute(subtask, previousResults = [], { model, qualityResearch, skillInstructions } = {}) {
     const maxRetries = 3;
     let totalUsage = null;
     let lastError = null;
@@ -150,6 +151,11 @@ QUALITY RULES:
             common_mistakes_to_avoid: qualityResearch.common_mistakes,
             approach: qualityResearch.approach_recommendation,
           };
+        }
+
+        // Include skill instructions if available
+        if (skillInstructions) {
+          context.skill_instructions = skillInstructions;
         }
 
         // If previous attempt failed, include error details so AI can correct
@@ -377,6 +383,40 @@ QUALITY RULES:
         toolUsed: toolName,
         error: `Permission denied for tool "${toolName}": ${permCheck.reason}`,
       };
+    }
+
+    // Shell command safety check
+    if (['run_command', 'execute_command'].includes(toolName)) {
+      const cmd = toolArgs.command || toolArgs.cmd || '';
+      const shellCheck = analyzeCommand(cmd);
+
+      if (shellCheck.blocked) {
+        return {
+          subtaskId: subtask.id,
+          success: false,
+          result: null,
+          details: { reason: shellCheck.reason, riskLevel: shellCheck.riskLevel },
+          toolUsed: toolName,
+          error: `Shell command blocked: ${shellCheck.reason}`,
+        };
+      }
+
+      if (shellCheck.requiresApproval) {
+        console.warn(`[Executor] Shell command requires approval: "${cmd}" (risk: ${shellCheck.riskLevel})`);
+        return {
+          subtaskId: subtask.id,
+          success: false,
+          result: null,
+          details: {
+            reason: shellCheck.reason,
+            riskLevel: shellCheck.riskLevel,
+            command: cmd,
+            requiresApproval: true,
+          },
+          toolUsed: toolName,
+          error: `Shell command requires approval: "${cmd}" — ${shellCheck.reason}`,
+        };
+      }
     }
 
     // Execute the tool via MCP
