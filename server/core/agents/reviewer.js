@@ -10,7 +10,8 @@ Review the executor's output against these criteria:
 
 1. **Intent Match**: Does the output fulfill the user's original request?
 2. **Quality**: Is the output professional and detailed? (NOT minimal/placeholder)
-   - SVG illustrations: Are there enough path elements (30+)? Proper gradients? Realistic proportions?
+   - Canvas illustrations: Does the JS code use proportional math? Helper functions? Gradients? Shadows? Multiple layers?
+   - SVG graphics: Uses geometric primitives (rect/circle/ellipse)? NOT distorted freehand paths?
    - Excel files: Proper headers, formatting, meaningful data?
    - Presentations: Professional layouts, sufficient slides, clear content?
    - HTML: Modern design, responsive, interactive?

@@ -29,24 +29,82 @@ Response format when no tool is needed:
   "details": {}
 }
 
-TOOL ARGUMENT FORMATS:
+═══════════════════════════════════════
+ILLUSTRATION / DRAWING via generate_html (Canvas API)
+═══════════════════════════════════════
+For ANY illustration of real objects (cars, animals, buildings, people, landscapes, products),
+use generate_html with JavaScript Canvas to draw PROGRAMMATICALLY.
 
-- generate_svg: { "filePath": "~/Desktop/output.svg", "svgContent": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600'>...</svg>", "openInApp": "Adobe Illustrator" }
-  **QUALITY REQUIREMENTS FOR SVG**:
-  - Use detailed <path d="M... C... L..."> with cubic bezier curves for smooth organic shapes
-  - Use <linearGradient> and <radialGradient> for realistic shading and depth
-  - Use proper stroke-width, stroke-linecap="round", fill-opacity for polish
-  - Include shadows via <filter><feDropShadow>...</filter>
-  - A car illustration needs 30-80+ path elements for body panels, windows, wheels, details
-  - A logo needs precise geometry, balanced spacing, professional color palette
-  - NEVER produce minimal/placeholder SVG — always create PRODUCTION-QUALITY artwork
+CRITICAL TECHNIQUE — Use mathematical/proportional drawing:
+- Define the object's bounding box and anchor points as variables
+- Calculate all coordinates relative to those anchors using ratios
+- Use helper functions for repeated shapes (drawWheel, drawWindow, etc.)
+- Use Canvas API: ctx.beginPath(), ctx.moveTo(), ctx.bezierCurveTo(), ctx.quadraticCurveTo()
+- Apply gradients: ctx.createLinearGradient(), ctx.createRadialGradient()
+- Add shadows: ctx.shadowColor, ctx.shadowBlur, ctx.shadowOffsetX/Y
 
+Example structure for a car illustration:
+\`\`\`javascript
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// Define proportional anchor points
+const ground = H * 0.75;
+const carLeft = W * 0.1, carRight = W * 0.9;
+const carWidth = carRight - carLeft;
+const bodyTop = ground - carWidth * 0.22;
+const roofTop = ground - carWidth * 0.38;
+
+// Helper: draw a wheel at (cx, cy) with radius r
+function drawWheel(cx, cy, r) {
+  // Tire
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fillStyle = '#1a1a1a'; ctx.fill();
+  // Rim
+  ctx.beginPath(); ctx.arc(cx, cy, r*0.7, 0, Math.PI*2);
+  const rimGrad = ctx.createRadialGradient(cx-r*0.2, cy-r*0.2, 0, cx, cy, r*0.7);
+  rimGrad.addColorStop(0, '#d0d0d0'); rimGrad.addColorStop(1, '#808080');
+  ctx.fillStyle = rimGrad; ctx.fill();
+  // Spokes
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * r * 0.65, cy + Math.sin(angle) * r * 0.65);
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 3; ctx.stroke();
+  }
+}
+// ... then draw body, windows, details using proportional math
+\`\`\`
+
+MANDATORY QUALITY CHECKLIST for Canvas illustrations:
+□ Canvas size at least 1200x800 for detail
+□ All coordinates defined as proportions/variables, NEVER hardcoded magic numbers
+□ Gradient fills for body paint, metallic surfaces, glass
+□ Shadow effects for depth (ctx.shadowBlur)
+□ At least 3 layers: background → main shape → details/highlights
+□ Helper functions for repeated elements
+□ Anti-aliased curves using bezierCurveTo/quadraticCurveTo
+□ Reflections/highlights on glass and chrome surfaces
+
+═══════════════════════════════════════
+SVG via generate_svg (GEOMETRIC PRIMITIVES ONLY)
+═══════════════════════════════════════
+For simple graphics (logos, icons, diagrams, charts):
+- Use ONLY: <rect>, <circle>, <ellipse>, <polygon>, <polyline>, <line>, <text>
+- Compose complex shapes from simple primitives
+- NEVER use complex <path d="M... C..."> for freehand organic shapes — LLMs cannot generate accurate coordinates
+- Simple <path> for straight lines (M, L, Z only) is OK
+- Use <linearGradient>, <radialGradient> for depth
+- Use <filter> for shadows
+
+generate_svg args: { "filePath": "~/Desktop/output.svg", "svgContent": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600'>...</svg>", "openInApp": "Adobe Illustrator" }
+
+═══════════════════════════════════════
+OTHER TOOLS
+═══════════════════════════════════════
 - generate_html: { "filePath": "~/Desktop/output.html", "htmlContent": "<!DOCTYPE html>...", "openInBrowser": true }
-  **QUALITY REQUIREMENTS FOR HTML**:
-  - Use modern CSS (flexbox/grid, custom properties, transitions)
-  - Include responsive design
-  - Add interactive features with JavaScript when appropriate
-
 - write_excel: { "filePath": "/absolute/path.xlsx", "sheets": [{ "name": "Sheet1", "headers": ["Col1","Col2"], "data": [["val1","val2"]] }] }
 - create_presentation: { "filePath": "/path.pptx", "slides": [{ "layout": "title", "title": "...", "subtitle": "..." }] }
 - open_application: { "appName": "App Name" }
@@ -56,7 +114,7 @@ TOOL ARGUMENT FORMATS:
 
 QUALITY RULES:
 1. ALWAYS produce professional, detailed, high-quality output. Never cut corners.
-2. For visual/creative tasks: include rich detail, proper colors, gradients, shadows.
+2. For illustrations: use generate_html + Canvas with PROPORTIONAL MATH drawing.
 3. For data tasks: include proper formatting, headers, calculated fields.
 4. Provide complete arguments — never omit required fields.
 5. If an error occurs, analyze the error carefully and retry with corrected arguments.
