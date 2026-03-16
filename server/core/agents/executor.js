@@ -7,20 +7,21 @@ export class ExecutorAgent {
     this.config = {
       role: 'executor',
       purpose: 'Executing plans created by the planner',
-      systemPrompt: `You are KAGE's execution agent.
+      systemPrompt: `You are KAGE's execution agent. You produce HIGH-QUALITY output.
+
 Execute subtasks received from the planner. Each subtask specifies which tools to use.
 
-CRITICAL: When a subtask specifies tools (e.g. "tools": ["write_excel"]), you MUST call that exact tool immediately. Do NOT call other tools for exploration or verification first.
+ABSOLUTE RULE: When a subtask specifies tools (e.g. "tools": ["generate_svg"]), you MUST respond with action:"tool_call" using that tool. NEVER respond with action:"direct" when tools are specified. NEVER skip the tool call even if you could generate the content directly — the tool call is what saves the file to disk.
 
-When calling a tool, respond with:
+Response format for tool calls:
 {
   "action": "tool_call",
-  "tool": "<tool_name_from_subtask>",
+  "tool": "<tool_name>",
   "arguments": { ... },
   "reasoning": "why this tool"
 }
 
-When no tool is needed, respond with:
+Response format when no tool is needed:
 {
   "action": "direct",
   "success": true,
@@ -28,20 +29,38 @@ When no tool is needed, respond with:
   "details": {}
 }
 
-Tool argument formats:
-- write_excel: { "filePath": "/absolute/path.xlsx", "sheets": [{ "name": "Sheet1", "headers": ["Col1","Col2"], "data": [["row1col1","row1col2"]] }] }
-- create_presentation: { "filePath": "/absolute/path.pptx", "slides": [{ "layout": "title", "title": "...", "subtitle": "..." }] }
-- open_application: { "appName": "App Name" }
-- run_applescript: { "script": "tell application \\"AppName\\" to ..." } — Can control ANY macOS app (Adobe Illustrator, Photoshop, Final Cut, etc.)
-- send_keys_to_app: { "appName": "App Name", "keys": "keystroke or shortcut" }
-- File paths support ~ for home directory (e.g. ~/Desktop/file.xlsx)
+TOOL ARGUMENT FORMATS:
 
-Rules:
-1. Use EXACTLY the tools listed in the subtask. Do NOT explore directories or check permissions first.
-2. Provide complete arguments - do not omit required fields.
-3. If an error occurs, retry with corrected arguments.
-4. Never log sensitive data.
-5. NEVER suggest installing plugins or MCP servers. Use run_applescript to control any app.`
+- generate_svg: { "filePath": "~/Desktop/output.svg", "svgContent": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600'>...</svg>", "openInApp": "Adobe Illustrator" }
+  **QUALITY REQUIREMENTS FOR SVG**:
+  - Use detailed <path d="M... C... L..."> with cubic bezier curves for smooth organic shapes
+  - Use <linearGradient> and <radialGradient> for realistic shading and depth
+  - Use proper stroke-width, stroke-linecap="round", fill-opacity for polish
+  - Include shadows via <filter><feDropShadow>...</filter>
+  - A car illustration needs 30-80+ path elements for body panels, windows, wheels, details
+  - A logo needs precise geometry, balanced spacing, professional color palette
+  - NEVER produce minimal/placeholder SVG — always create PRODUCTION-QUALITY artwork
+
+- generate_html: { "filePath": "~/Desktop/output.html", "htmlContent": "<!DOCTYPE html>...", "openInBrowser": true }
+  **QUALITY REQUIREMENTS FOR HTML**:
+  - Use modern CSS (flexbox/grid, custom properties, transitions)
+  - Include responsive design
+  - Add interactive features with JavaScript when appropriate
+
+- write_excel: { "filePath": "/absolute/path.xlsx", "sheets": [{ "name": "Sheet1", "headers": ["Col1","Col2"], "data": [["val1","val2"]] }] }
+- create_presentation: { "filePath": "/path.pptx", "slides": [{ "layout": "title", "title": "...", "subtitle": "..." }] }
+- open_application: { "appName": "App Name" }
+- run_applescript: { "script": "tell application \\"AppName\\" to ..." }
+- send_keys_to_app: { "appName": "App Name", "keys": "keystroke or shortcut" }
+- File paths support ~ for home directory
+
+QUALITY RULES:
+1. ALWAYS produce professional, detailed, high-quality output. Never cut corners.
+2. For visual/creative tasks: include rich detail, proper colors, gradients, shadows.
+3. For data tasks: include proper formatting, headers, calculated fields.
+4. Provide complete arguments — never omit required fields.
+5. If an error occurs, analyze the error carefully and retry with corrected arguments.
+6. NEVER suggest installing plugins or MCP servers.`
     };
   }
 
@@ -91,6 +110,28 @@ Rules:
           return toolResult;
         }
 
+        // CODE-LEVEL ENFORCEMENT: If AI returned "direct" but subtask specifies tools,
+        // attempt to extract content and auto-call the tool programmatically.
+        // This fixes the common issue where the AI generates SVG/HTML content inline
+        // instead of wrapping it in a tool_call.
+        if (decision.action !== 'tool_call' && subtask.tools && subtask.tools.length > 0) {
+          console.log(`[Executor] AI returned action="${decision.action}" but subtask requires tools: [${subtask.tools.join(', ')}]`);
+          console.log(`[Executor] Decision keys: ${Object.keys(decision).join(', ')}`);
+          console.log(`[Executor] Result preview: ${(decision.result || decision.raw || '').toString().slice(0, 200)}`);
+          const rescued = this._rescueDirectResponse(subtask, decision);
+          if (rescued) {
+            console.log(`[Executor] Rescued direct response → auto-calling tool "${rescued.tool}"`);
+            const toolResult = await this._executeToolCall(subtask, rescued);
+            toolResult.usage = totalUsage;
+            if (!toolResult.success && attempt < maxRetries - 1) {
+              lastError = toolResult.error || 'Tool execution failed (rescued)';
+              console.error(`[Executor] Rescued tool "${rescued.tool}" failed (attempt ${attempt + 1}/${maxRetries}): ${lastError}`);
+              continue;
+            }
+            return toolResult;
+          }
+        }
+
         // Direct answer (no tool needed)
         return {
           subtaskId: subtask.id,
@@ -119,6 +160,113 @@ Rules:
         // Continue to next retry with error feedback
       }
     }
+  }
+
+  /**
+   * Rescue a "direct" response when the AI should have called a tool.
+   * Extracts SVG/HTML content from the response text and constructs
+   * a synthetic tool_call decision so the file gets saved to disk.
+   */
+  _rescueDirectResponse(subtask, decision) {
+    // Collect ALL text from the decision object — the SVG/HTML might be in any field
+    const allTexts = [];
+    for (const [key, val] of Object.entries(decision)) {
+      if (typeof val === 'string') allTexts.push(val);
+      else if (typeof val === 'object' && val) {
+        try { allTexts.push(JSON.stringify(val)); } catch {}
+      }
+    }
+    const responseText = allTexts.join('\n');
+    const tools = subtask.tools || [];
+    console.log(`[Executor Rescue] Searching ${responseText.length} chars for content matching tools: [${tools.join(', ')}]`);
+
+    // Try to rescue generate_svg
+    if (tools.includes('generate_svg')) {
+      const svgMatch = responseText.match(/<svg[\s\S]*?<\/svg>/i);
+      if (svgMatch) {
+        // Derive a file path from subtask description
+        const filePath = this._deriveFilePath(subtask.description, 'svg');
+        return {
+          action: 'tool_call',
+          tool: 'generate_svg',
+          arguments: {
+            filePath,
+            svgContent: svgMatch[0],
+            openInApp: this._detectTargetApp(subtask.description, 'svg'),
+          },
+          reasoning: 'Auto-rescued: AI returned SVG content as direct response instead of tool_call',
+        };
+      }
+    }
+
+    // Try to rescue generate_html
+    if (tools.includes('generate_html')) {
+      const htmlMatch = responseText.match(/<!DOCTYPE html>[\s\S]*?<\/html>/i)
+        || responseText.match(/<html[\s\S]*?<\/html>/i);
+      if (htmlMatch) {
+        const filePath = this._deriveFilePath(subtask.description, 'html');
+        return {
+          action: 'tool_call',
+          tool: 'generate_html',
+          arguments: {
+            filePath,
+            htmlContent: htmlMatch[0],
+            openInBrowser: true,
+          },
+          reasoning: 'Auto-rescued: AI returned HTML content as direct response instead of tool_call',
+        };
+      }
+    }
+
+    // Try to rescue write_excel — look for JSON data that could be sheet data
+    if (tools.includes('write_excel')) {
+      try {
+        const sheetsMatch = responseText.match(/"sheets"\s*:\s*\[[\s\S]*?\]\s*\]/);
+        if (sheetsMatch) {
+          const parsed = JSON.parse(`{${sheetsMatch[0]}}`);
+          if (parsed.sheets) {
+            const filePath = this._deriveFilePath(subtask.description, 'xlsx');
+            return {
+              action: 'tool_call',
+              tool: 'write_excel',
+              arguments: { filePath, sheets: parsed.sheets },
+              reasoning: 'Auto-rescued: AI returned Excel data as direct response',
+            };
+          }
+        }
+      } catch {}
+    }
+
+    return null; // Could not rescue
+  }
+
+  /**
+   * Derive an output file path from the subtask description.
+   */
+  _deriveFilePath(description, ext) {
+    // Extract meaningful words for filename
+    const words = description
+      .replace(/[^\w\s\u3000-\u9FFF\uF900-\uFAFF]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 1)
+      .slice(0, 3)
+      .join('_')
+      .toLowerCase();
+    const name = words || 'output';
+    return `~/Desktop/${name}.${ext}`;
+  }
+
+  /**
+   * Detect target application from subtask description.
+   */
+  _detectTargetApp(description, type) {
+    const desc = description.toLowerCase();
+    if (type === 'svg') {
+      if (desc.includes('illustrator')) return 'Adobe Illustrator';
+      if (desc.includes('inkscape')) return 'Inkscape';
+      if (desc.includes('figma')) return 'Figma';
+    }
+    return null;
   }
 
   _mergeUsage(existing, newUsage) {

@@ -282,6 +282,34 @@ const TOOLS = [
       },
       required: ['appName', 'action']
     }
+  },
+  {
+    name: 'generate_svg',
+    description: 'Generate a high-quality SVG vector graphic file from a detailed description. Creates professional SVG with proper paths, gradients, shapes, and styling. The SVG can be opened in Adobe Illustrator, Figma, or any vector editor. Use this instead of run_applescript for any drawing/illustration/design task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: 'Output path for the SVG file (e.g. ~/Desktop/porsche.svg)' },
+        svgContent: { type: 'string', description: 'Complete SVG markup string. Must be a valid SVG document with proper xmlns, viewBox, and detailed vector paths. Use <path d="..."> for complex shapes, <linearGradient>/<radialGradient> for shading, proper colors and stroke widths for a professional look.' },
+        width: { type: 'number', description: 'SVG width in pixels (default: 800)' },
+        height: { type: 'number', description: 'SVG height in pixels (default: 600)' },
+        openInApp: { type: 'string', description: 'Optional: application to open the SVG in after creation (e.g. "Adobe Illustrator", "Figma")' }
+      },
+      required: ['filePath', 'svgContent']
+    }
+  },
+  {
+    name: 'generate_html',
+    description: 'Generate an HTML file with embedded CSS and JavaScript. Use for rich visual content, interactive dashboards, charts, or any content that benefits from web rendering. Can be opened in any browser.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: 'Output path for the HTML file' },
+        htmlContent: { type: 'string', description: 'Complete HTML document string' },
+        openInBrowser: { type: 'boolean', description: 'Open in default browser after creation (default: true)' }
+      },
+      required: ['filePath', 'htmlContent']
+    }
   }
 ];
 
@@ -836,6 +864,63 @@ end tell`;
   throw new Error('control_app_window is currently only supported on macOS');
 }
 
+// ── SVG / HTML Generation ───────────────────────────────────────
+
+async function handleGenerateSvg({ filePath, svgContent, width, height, openInApp }) {
+  if (!filePath?.trim()) throw new Error('filePath is required');
+  if (!svgContent?.trim()) throw new Error('svgContent is required');
+
+  const absPath = expandPath(filePath);
+
+  // Ensure SVG has proper XML declaration and namespace
+  let svg = svgContent.trim();
+  if (!svg.startsWith('<?xml') && !svg.startsWith('<svg')) {
+    throw new Error('svgContent must be valid SVG markup starting with <svg> or <?xml>');
+  }
+  if (!svg.includes('xmlns')) {
+    svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+
+  writeFileSync(absPath, svg, 'utf-8');
+
+  // Optionally open in an application
+  if (openInApp) {
+    try {
+      execSync(`open -a "${openInApp}" "${absPath}"`);
+    } catch {
+      // Fallback: open with default app
+      execSync(`open "${absPath}"`);
+    }
+  }
+
+  return {
+    success: true,
+    message: `SVG file created: ${absPath}`,
+    filePath: absPath,
+    size: svg.length,
+    openedIn: openInApp || null,
+  };
+}
+
+async function handleGenerateHtml({ filePath, htmlContent, openInBrowser }) {
+  if (!filePath?.trim()) throw new Error('filePath is required');
+  if (!htmlContent?.trim()) throw new Error('htmlContent is required');
+
+  const absPath = expandPath(filePath);
+  writeFileSync(absPath, htmlContent, 'utf-8');
+
+  if (openInBrowser !== false) {
+    execSync(`open "${absPath}"`);
+  }
+
+  return {
+    success: true,
+    message: `HTML file created: ${absPath}`,
+    filePath: absPath,
+    size: htmlContent.length,
+  };
+}
+
 // ── Handler Map ────────────────────────────────────────────────
 
 const TOOL_HANDLERS = {
@@ -852,7 +937,9 @@ const TOOL_HANDLERS = {
   read_presentation: handleReadPresentation,
   open_file_with_default_app: handleOpenFileWithDefaultApp,
   get_app_windows: handleGetAppWindows,
-  control_app_window: handleControlAppWindow
+  control_app_window: handleControlAppWindow,
+  generate_svg: handleGenerateSvg,
+  generate_html: handleGenerateHtml,
 };
 
 // ── Server Setup ───────────────────────────────────────────────
@@ -901,6 +988,8 @@ function normalizeArgs(name, args) {
     left_column: 'leftColumn', right_column: 'rightColumn',
     primary_color: 'primaryColor', secondary_color: 'secondaryColor',
     font_family: 'fontFamily', speaker_notes: 'notes',
+    svg_content: 'svgContent', html_content: 'htmlContent',
+    open_in_app: 'openInApp', open_in_browser: 'openInBrowser',
   };
   for (const [snake, camel] of Object.entries(ALIASES)) {
     if (normalized[snake] !== undefined && normalized[camel] === undefined) {

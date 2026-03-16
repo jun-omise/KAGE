@@ -208,11 +208,15 @@ class AIClient {
   /**
    * Run an agent call (expects JSON response)
    */
-  async runAgent(agentConfig, input, { model } = {}) {
+  async runAgent(agentConfig, input, { model, maxTokens } = {}) {
     const messages = [{ role: 'user', content: JSON.stringify(input) }];
+
+    // Executor needs much higher token limits for generating SVG/HTML content
+    const defaultMaxTokens = agentConfig.role === 'executor' ? 16384 : 4096;
+
     const response = await this.chat(messages, {
       systemPrompt: agentConfig.systemPrompt,
-      maxTokens: 2048,
+      maxTokens: maxTokens || defaultMaxTokens,
       model,
     });
 
@@ -222,15 +226,52 @@ class AIClient {
     // Extract usage data from the response
     const usage = response.usage || null;
 
+    // Try to parse JSON from the response
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]);
         return { result, usage };
       }
-    } catch {}
+    } catch {
+      // If JSON parsing failed, try to find the outermost balanced JSON object
+      try {
+        const result = this._extractBalancedJson(text);
+        if (result) return { result, usage };
+      } catch {}
+    }
 
     return { result: { raw: text }, usage };
+  }
+
+  /**
+   * Extract the outermost balanced JSON object from text.
+   * More robust than simple regex when response contains nested braces (e.g., SVG in JSON).
+   */
+  _extractBalancedJson(text) {
+    const firstBrace = text.indexOf('{');
+    if (firstBrace === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = firstBrace; i < text.length; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"' && !escape) { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidate = text.slice(firstBrace, i + 1);
+          return JSON.parse(candidate);
+        }
+      }
+    }
+    return null;
   }
 
   /**

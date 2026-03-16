@@ -250,6 +250,23 @@
     "sendKeys": "Send Keystrokes",
     "windowControl": "Window Control"
   },
+  "queue": {
+    "title": "Task Queue",
+    "single": "Single Task",
+    "batch": "Batch",
+    "placeholder": "Describe a task to execute...",
+    "batchPlaceholder": "One task per line:\nCreate an Excel report of sales data\nTake a screenshot of the desktop\nList installed applications",
+    "tasksCount": "tasks",
+    "runAll": "Run All",
+    "running": "Running",
+    "queued": "Queued",
+    "done": "Done",
+    "failed": "Failed",
+    "finished": "Finished",
+    "clearFinished": "Clear finished",
+    "empty": "No tasks in queue",
+    "emptyHint": "Submit tasks above to run them in parallel"
+  },
   "common": {
     "settings": "Settings",
     "close": "Close",

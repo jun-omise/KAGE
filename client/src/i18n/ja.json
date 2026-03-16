@@ -250,6 +250,23 @@
     "sendKeys": "キー入力送信",
     "windowControl": "ウィンドウ制御"
   },
+  "queue": {
+    "title": "タスクキュー",
+    "single": "単一タスク",
+    "batch": "一括実行",
+    "placeholder": "実行するタスクを入力...",
+    "batchPlaceholder": "1行に1タスク:\n売上データのExcelレポートを作成\nデスクトップのスクリーンショットを撮影\nインストール済みアプリの一覧を表示",
+    "tasksCount": "タスク",
+    "runAll": "全て実行",
+    "running": "実行中",
+    "queued": "待機中",
+    "done": "完了",
+    "failed": "失敗",
+    "finished": "完了済み",
+    "clearFinished": "完了タスクをクリア",
+    "empty": "タスクキューは空です",
+    "emptyHint": "上のフォームからタスクを投入して並列実行できます"
+  },
   "common": {
     "settings": "設定",
     "close": "閉じる",

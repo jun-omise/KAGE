@@ -18,6 +18,7 @@ import suggestionRoutes from './routes/suggestions.js';
 import notificationRoutes from './routes/notifications.js';
 import webhookRoutes from './routes/webhooks.js';
 import messagingConfigRoutes from './routes/messaging-config.js';
+import taskQueueRoutes from './routes/task-queue.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -44,6 +45,7 @@ app.use('/api/suggestions', suggestionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/messaging', messagingConfigRoutes);
+app.use('/api/queue', taskQueueRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

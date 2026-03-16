@@ -285,15 +285,20 @@ class AgentOrchestrator {
         // Detect file operations for result presentation
         if (result.toolUsed && result.details?.tool) {
           const toolName = result.details.tool.toLowerCase();
-          if (toolName.includes('write_file') || toolName.includes('create')) {
-            const filePath = result.details.arguments?.path || result.details.arguments?.file_path || '';
+          const args = result.details.arguments || {};
+          const filePath = args.filePath || args.file_path || args.path || '';
+          if (toolName.includes('generate_svg') || toolName.includes('generate_html')) {
+            if (filePath) fileResults.push({ action: 'created', path: filePath, type: toolName.includes('svg') ? 'svg' : 'html' });
+          } else if (toolName.includes('write_file') || toolName.includes('create')) {
             if (filePath) fileResults.push({ action: 'created', path: filePath });
           } else if (toolName.includes('read_file')) {
-            const filePath = result.details.arguments?.path || result.details.arguments?.file_path || '';
             if (filePath) fileResults.push({ action: 'read', path: filePath });
           } else if (toolName.includes('edit') || toolName.includes('update') || toolName.includes('move')) {
-            const filePath = result.details.arguments?.path || result.details.arguments?.file_path || '';
             if (filePath) fileResults.push({ action: 'modified', path: filePath });
+          } else if (toolName.includes('write_excel')) {
+            if (filePath) fileResults.push({ action: 'created', path: filePath, type: 'excel' });
+          } else if (toolName.includes('create_presentation')) {
+            if (filePath) fileResults.push({ action: 'created', path: filePath, type: 'pptx' });
           }
         }
 
@@ -450,7 +455,18 @@ Respond in the same language as the user's message.`,
     ];
 
     const response = await this.ai.chat(messages, {
-      systemPrompt: 'You are KAGE, a helpful AI assistant. Generate a concise, natural response based on the provided context. NEVER suggest the user install plugins, extensions, or MCP servers. NEVER say a tool or integration is unavailable. If a task was executed via AppleScript or other tools, report the result directly.',
+      systemPrompt: `You are KAGE, a highly capable AI assistant. Generate professional, detailed responses.
+
+Response quality rules:
+1. Be specific — include file paths, results, and concrete details
+2. Use proper Markdown formatting (headings, lists, code blocks, bold/italic)
+3. When files were created, mention their exact paths and what they contain
+4. When errors occurred and were recovered, mention the recovery briefly
+5. Respond in the SAME LANGUAGE as the user's original request
+6. NEVER suggest installing plugins, extensions, or MCP servers
+7. NEVER say a tool or integration is unavailable
+8. For creative output (SVG, HTML), describe what was created in visual detail
+9. Keep responses focused and well-organized`,
       maxTokens: 2048,
       model,
     });

@@ -45,81 +45,66 @@ export function useSSE(conversationId) {
       }, 3000);
     };
 
-    es.addEventListener('agent:start', (e) => {
-      const data = JSON.parse(e.data);
-      setState(prev => ({
+    // Helper: safely update agent state (skip unknown agents like 'system')
+    const safeAgentUpdate = (prev, agent, updater) => {
+      if (!prev.agentStates[agent]) return prev;
+      const current = prev.agentStates[agent];
+      return {
         ...prev,
         agentStates: {
           ...prev.agentStates,
-          [data.agent]: {
-            ...prev.agentStates[data.agent],
-            status: 'active',
-            logs: [...prev.agentStates[data.agent].logs, { type: 'start', message: data.message, timestamp: Date.now() }],
-          },
+          [agent]: updater(current),
         },
-      }));
+      };
+    };
+
+    es.addEventListener('agent:start', (e) => {
+      const data = JSON.parse(e.data);
+      setState(prev => safeAgentUpdate(prev, data.agent, (cur) => ({
+        ...cur,
+        status: 'active',
+        logs: [...(cur.logs || []), { type: 'start', message: data.message, timestamp: Date.now() }],
+      })));
     });
 
     es.addEventListener('agent:thinking', (e) => {
       const data = JSON.parse(e.data);
-      setState(prev => ({
-        ...prev,
-        agentStates: {
-          ...prev.agentStates,
-          [data.agent]: {
-            ...prev.agentStates[data.agent],
-            status: 'running',
-            logs: [...prev.agentStates[data.agent].logs, { type: 'thinking', message: data.thought, timestamp: Date.now() }],
-          },
-        },
-      }));
+      setState(prev => safeAgentUpdate(prev, data.agent, (cur) => ({
+        ...cur,
+        status: 'running',
+        logs: [...(cur.logs || []), { type: 'thinking', message: data.thought, timestamp: Date.now() }],
+      })));
     });
 
     es.addEventListener('agent:tool_call', (e) => {
       const data = JSON.parse(e.data);
-      setState(prev => ({
-        ...prev,
-        agentStates: {
-          ...prev.agentStates,
-          [data.agent]: {
-            ...prev.agentStates[data.agent],
-            status: 'running',
-            logs: [...prev.agentStates[data.agent].logs, { type: 'tool_call', tool: data.tool, args: data.args, timestamp: Date.now() }],
-          },
-        },
-      }));
+      setState(prev => safeAgentUpdate(prev, data.agent, (cur) => ({
+        ...cur,
+        status: 'running',
+        logs: [...(cur.logs || []), { type: 'tool_call', tool: data.tool, args: data.args, timestamp: Date.now() }],
+      })));
     });
 
     es.addEventListener('agent:tool_result', (e) => {
       const data = JSON.parse(e.data);
-      setState(prev => ({
-        ...prev,
-        agentStates: {
-          ...prev.agentStates,
-          [data.agent]: {
-            ...prev.agentStates[data.agent],
-            logs: [...prev.agentStates[data.agent].logs, { type: 'tool_result', result: data.result, timestamp: Date.now() }],
-            progress: data.progress ?? prev.agentStates[data.agent].progress,
-          },
-        },
-      }));
+      setState(prev => safeAgentUpdate(prev, data.agent, (cur) => ({
+        ...cur,
+        logs: [...(cur.logs || []), { type: 'tool_result', result: data.result, timestamp: Date.now() }],
+        progress: data.progress ?? cur.progress,
+      })));
     });
 
     es.addEventListener('agent:complete', (e) => {
       const data = JSON.parse(e.data);
-      setState(prev => ({
-        ...prev,
-        agentStates: {
-          ...prev.agentStates,
-          [data.agent]: {
-            ...prev.agentStates[data.agent],
-            status: 'complete',
-            progress: 100,
-            logs: [...prev.agentStates[data.agent].logs, { type: 'complete', message: data.message, timestamp: Date.now() }],
-          },
-        },
-        cost: data.cost ?? prev.cost,
-      }));
+      setState(prev => {
+        const updated = safeAgentUpdate(prev, data.agent, (cur) => ({
+          ...cur,
+          status: 'complete',
+          progress: 100,
+          logs: [...(cur.logs || []), { type: 'complete', message: data.message, timestamp: Date.now() }],
+        }));
+        return { ...updated, cost: data.cost ?? prev.cost };
+      });
     });
 
     es.addEventListener('approval:required', (e) => {
@@ -193,23 +178,17 @@ export function useSSE(conversationId) {
     // Agent detail events
     es.addEventListener('agent:detail', (e) => {
       const data = JSON.parse(e.data);
-      setState(prev => ({
-        ...prev,
-        agentStates: {
-          ...prev.agentStates,
-          [data.agent]: {
-            ...prev.agentStates[data.agent],
-            detail: {
-              currentAction: data.currentAction,
-              toolName: data.toolName || null,
-              inputPreview: data.inputPreview || null,
-              outputPreview: data.outputPreview || null,
-              tokenCount: data.tokenCount || null,
-              costEstimate: data.costEstimate || null,
-            },
-          },
+      setState(prev => safeAgentUpdate(prev, data.agent, (cur) => ({
+        ...cur,
+        detail: {
+          currentAction: data.currentAction,
+          toolName: data.toolName || null,
+          inputPreview: data.inputPreview || null,
+          outputPreview: data.outputPreview || null,
+          tokenCount: data.tokenCount || null,
+          costEstimate: data.costEstimate || null,
         },
-      }));
+      })));
     });
 
     // Result events
@@ -269,16 +248,19 @@ export function useSSE(conversationId) {
 
     es.addEventListener('agent:warning', (e) => {
       const data = JSON.parse(e.data);
-      setState(prev => ({
-        ...prev,
-        agentStates: {
-          ...prev.agentStates,
-          [data.agent || 'sentinel']: {
-            ...prev.agentStates[data.agent || 'sentinel'],
-            logs: [...prev.agentStates[data.agent || 'sentinel'].logs, { type: 'warning', message: data.message, timestamp: Date.now() }],
+      setState(prev => {
+        const targetAgent = prev.agentStates[data.agent] ? data.agent : 'sentinel';
+        return {
+          ...prev,
+          agentStates: {
+            ...prev.agentStates,
+            [targetAgent]: {
+              ...prev.agentStates[targetAgent],
+              logs: [...(prev.agentStates[targetAgent]?.logs || []), { type: 'warning', message: data.message, timestamp: Date.now() }],
+            },
           },
-        },
-      }));
+        };
+      });
     });
   }, [conversationId]);
 

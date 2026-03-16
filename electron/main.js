@@ -277,13 +277,41 @@ function createMenu() {
 
 // App lifecycle
 app.whenReady().then(async () => {
-  try {
-    serverPort = await getAvailablePort(3456);
-    await startServer(serverPort);
-    console.log(`Server ready on port ${serverPort}`);
-  } catch (error) {
-    console.error('Server startup error:', error);
-    dialog.showErrorBox('KAGE Server Error', `Failed to start server: ${error.message}`);
+  if (isDev) {
+    // In dev mode, assume server is already running externally (via `node server/index.js`)
+    // Just check if server is reachable
+    const http = await import('http');
+    const serverReady = await new Promise((resolve) => {
+      const req = http.get(`http://localhost:${serverPort}/api/health`, (res) => {
+        resolve(res.statusCode === 200);
+      });
+      req.on('error', () => resolve(false));
+      req.setTimeout(2000, () => { req.destroy(); resolve(false); });
+    });
+
+    if (serverReady) {
+      console.log(`Dev mode: server already running on port ${serverPort}`);
+    } else {
+      // Server not running — start it
+      try {
+        serverPort = await getAvailablePort(3456);
+        await startServer(serverPort);
+        console.log(`Server started on port ${serverPort}`);
+      } catch (error) {
+        console.error('Server startup error:', error);
+        dialog.showErrorBox('KAGE Server Error', `Failed to start server: ${error.message}`);
+      }
+    }
+  } else {
+    // Production: always start server
+    try {
+      serverPort = await getAvailablePort(3456);
+      await startServer(serverPort);
+      console.log(`Server ready on port ${serverPort}`);
+    } catch (error) {
+      console.error('Server startup error:', error);
+      dialog.showErrorBox('KAGE Server Error', `Failed to start server: ${error.message}`);
+    }
   }
 
   createMenu();

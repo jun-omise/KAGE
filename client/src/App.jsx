@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   MessageSquare, ListTodo, Wrench, ShieldCheck,
   Settings, Menu, X, Shield, ChevronLeft, ChevronRight,
-  Bell, MessageCircle,
+  Bell, MessageCircle, Layers,
 } from 'lucide-react';
 import { useI18n } from './i18n/index.jsx';
 import { useChat } from './hooks/useChat';
@@ -19,9 +19,11 @@ import ModelSelector from './components/ModelSelector';
 import SetupWizard from './components/SetupWizard';
 import NotificationSettings from './components/NotificationSettings';
 import MessagingConfig from './components/MessagingConfig';
+import TaskDashboard from './components/TaskDashboard';
 
 const NAV_ITEMS = [
   { key: 'chat', icon: MessageSquare },
+  { key: 'queue', icon: Layers },
   { key: 'tasks', icon: ListTodo },
   { key: 'tools', icon: Wrench },
   { key: 'notifications', icon: Bell },
@@ -436,6 +438,7 @@ export default function App() {
                 <Icon size={16} />
                 <span className="hidden sm:inline">{
                   key === 'chat' ? 'Chat'
+                  : key === 'queue' ? (t('queue.title') || 'Queue')
                   : key === 'tasks' ? t('tasks.title')
                   : key === 'tools' ? t('tools.title')
                   : key === 'notifications' ? t('notifications.title')
@@ -493,6 +496,7 @@ export default function App() {
               subtaskProgress={subtaskProgress}
             />
           )}
+          {currentView === 'queue' && <TaskDashboard />}
           {currentView === 'tasks' && <TaskBuilder />}
           {currentView === 'tools' && <ToolManager />}
           {currentView === 'notifications' && <NotificationSettings />}

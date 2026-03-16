@@ -110,6 +110,8 @@ const TOOL_SERVER_MAP = {
   open_file_with_default_app: 'local_apps',
   get_app_windows: 'local_apps',
   control_app_window: 'local_apps',
+  generate_svg: 'local_apps',
+  generate_html: 'local_apps',
 };
 
 /**

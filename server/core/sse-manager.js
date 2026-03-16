@@ -30,12 +30,16 @@ class SSEManager extends EventEmitter {
 
   send(conversationId, event, data) {
     const conns = this.connections.get(conversationId);
-    if (!conns) return;
-
     const payload = `event: ${event}\ndata: ${JSON.stringify({ ...data, timestamp: Date.now() })}\n\n`;
-    for (const res of conns) {
-      res.write(payload);
+
+    if (conns) {
+      for (const res of conns) {
+        res.write(payload);
+      }
     }
+
+    // Emit for task queue and other listeners
+    this.emit('send', { convId: conversationId, event, data });
   }
 
   broadcast(event, data) {
