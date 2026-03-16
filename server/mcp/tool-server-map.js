@@ -112,6 +112,8 @@ const TOOL_SERVER_MAP = {
   control_app_window: 'local_apps',
   generate_svg: 'local_apps',
   generate_html: 'local_apps',
+  web_search: 'local_apps',
+  fetch_url: 'local_apps',
 };
 
 /**

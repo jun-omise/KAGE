@@ -4,6 +4,7 @@ const INITIAL_STATE = {
   agentStates: {
     sentinel: { status: 'idle', logs: [], progress: 0, detail: null },
     planner: { status: 'idle', logs: [], progress: 0, detail: null },
+    researcher: { status: 'idle', logs: [], progress: 0, detail: null },
     executor: { status: 'idle', logs: [], progress: 0, detail: null },
     reviewer: { status: 'idle', logs: [], progress: 0, detail: null },
   },

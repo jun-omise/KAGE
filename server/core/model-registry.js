@@ -84,7 +84,7 @@ export const MODEL_CATALOG = [
   { id: 'claude-opus-4-6', provider: 'anthropic', name: 'Claude Opus 4.6', tier: 'flagship', contextWindow: 1000000, inputCost: 15, outputCost: 75 },
   { id: 'claude-sonnet-4-6', provider: 'anthropic', name: 'Claude Sonnet 4.6', tier: 'balanced', contextWindow: 1000000, inputCost: 3, outputCost: 15 },
   { id: 'claude-sonnet-4-5-20250929', provider: 'anthropic', name: 'Claude Sonnet 4.5', tier: 'balanced', contextWindow: 200000, inputCost: 3, outputCost: 15 },
-  { id: 'claude-haiku-4-5-20251231', provider: 'anthropic', name: 'Claude Haiku 4.5', tier: 'fast', contextWindow: 200000, inputCost: 0.8, outputCost: 4 },
+  { id: 'claude-3-5-haiku-20241022', provider: 'anthropic', name: 'Claude 3.5 Haiku', tier: 'fast', contextWindow: 200000, inputCost: 0.8, outputCost: 4 },
   { id: 'claude-sonnet-4-20250514', provider: 'anthropic', name: 'Claude Sonnet 4', tier: 'balanced', contextWindow: 200000, inputCost: 3, outputCost: 15 },
   { id: 'claude-opus-4-20250514', provider: 'anthropic', name: 'Claude Opus 4', tier: 'flagship', contextWindow: 200000, inputCost: 15, outputCost: 75 },
 

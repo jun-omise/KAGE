@@ -5,6 +5,7 @@ import { SentinelAgent } from './agents/sentinel.js';
 import { PlannerAgent } from './agents/planner.js';
 import { ExecutorAgent } from './agents/executor.js';
 import { ReviewerAgent } from './agents/reviewer.js';
+import { ResearchAgent } from './agents/researcher.js';
 import { detectPII, maskPII } from '../security/pii-detector.js';
 import { LoopDetector } from '../security/loop-detector.js';
 import { CostTracker } from '../security/cost-tracker.js';
@@ -22,6 +23,7 @@ class AgentOrchestrator {
     this.agents = {
       sentinel: new SentinelAgent(this.ai),
       planner: new PlannerAgent(this.ai),
+      researcher: new ResearchAgent(this.ai),
       executor: new ExecutorAgent(this.ai),
       reviewer: new ReviewerAgent(this.ai),
     };
@@ -161,7 +163,7 @@ class AgentOrchestrator {
 
       // Update totalSteps now that we know how many subtasks
       const subtaskCount = plan.subtasks?.length || 1;
-      totalSteps = 3 + subtaskCount + 2; // sentinel_input + planning + sentinel_plan + N subtasks + review + response
+      totalSteps = 3 + subtaskCount + 3; // sentinel_input + planning + sentinel_plan + research + N subtasks + review + response
       this._emitAgentDetail(conversationId, 'planner', {
         currentAction: 'Complete',
         outputPreview: `Plan: ${subtaskCount} subtask(s) - ${plan.summary || ''}`.slice(0, 200),
@@ -239,6 +241,28 @@ class AgentOrchestrator {
 
       if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
 
+      // Step 4.5: Research — gather quality references and benchmarks
+      let qualityResearch = null;
+      const needsResearch = plan.subtasks?.some(s =>
+        s.tools?.some(t => ['generate_svg', 'generate_html', 'create_presentation', 'write_excel'].includes(t))
+      );
+      if (needsResearch) {
+        try {
+          const researcherModel = getModelForAgent('researcher', complexity, mainModelId);
+          this._emitProgress(conversationId, 'research', 4, totalSteps, 'Researching quality standards...', startTime);
+          sseManager.send(conversationId, 'agent:start', { agent: 'researcher', action: 'Researching quality references...', model: researcherModel });
+          const researchStart = Date.now();
+          qualityResearch = await this.agents.researcher.research(userMessage, plan, { model: researcherModel, conversationId });
+          const researchDuration = Date.now() - researchStart;
+          if (qualityResearch.usage) tokenTracker.record('researcher', researcherModel, qualityResearch.usage);
+          trace.push({ agent: 'researcher', phase: 'quality_research', result: qualityResearch, duration_ms: researchDuration, model: researcherModel });
+          sseManager.send(conversationId, 'agent:complete', { agent: 'researcher', result: 'success', duration_ms: researchDuration });
+          console.log(`[Orchestrator] Quality research: type=${qualityResearch.task_type}, criteria=${qualityResearch.quality_criteria?.length || 0}`);
+        } catch (e) {
+          console.error('[Orchestrator] Research phase error (non-fatal):', e.message);
+        }
+      }
+
       // Step 5: Executor — execute subtasks
       const executorModel = getModelForAgent('executor', complexity, mainModelId);
       const results = [];
@@ -249,7 +273,7 @@ class AgentOrchestrator {
         const subtask = subtasks[i];
         const execStart = Date.now();
         subtaskStartTimes.push(execStart);
-        const currentStep = 4 + i; // steps 1-3 are sentinel/planner/sentinel
+        const currentStep = (needsResearch ? 5 : 4) + i; // adjust for research phase
         this._emitProgress(conversationId, 'execution', currentStep, totalSteps, `Executing: ${subtask.description}`, startTime);
 
         // Emit subtask-level progress
@@ -276,7 +300,7 @@ class AgentOrchestrator {
           model: executorModel,
         });
 
-        const result = await this.agents.executor.execute(subtask, results, { model: executorModel });
+        const result = await this.agents.executor.execute(subtask, results, { model: executorModel, qualityResearch });
         const execDuration = Date.now() - execStart;
         if (result.usage) tokenTracker.record('executor', executorModel, result.usage);
         results.push(result);
@@ -343,7 +367,7 @@ class AgentOrchestrator {
       const reviewerStart = Date.now();
       sseManager.send(conversationId, 'agent:start', { agent: 'reviewer', action: 'Verifying results...', model: reviewerModel });
       this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Verifying execution results', inputPreview: `${results.length} result(s)`, model: reviewerModel });
-      const review = await this.agents.reviewer.review(userMessage, plan, results, { model: reviewerModel });
+      const review = await this.agents.reviewer.review(userMessage, plan, results, { model: reviewerModel, qualityResearch });
       const reviewerDuration = Date.now() - reviewerStart;
       if (review.usage) tokenTracker.record('reviewer', reviewerModel, review.usage);
       trace.push({ agent: 'reviewer', phase: 'review', result: review, duration_ms: reviewerDuration, model: reviewerModel });

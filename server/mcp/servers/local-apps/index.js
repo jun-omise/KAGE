@@ -310,6 +310,30 @@ const TOOLS = [
       },
       required: ['filePath', 'htmlContent']
     }
+  },
+  {
+    name: 'web_search',
+    description: 'Search the web using DuckDuckGo. Returns search results with titles, URLs, and snippets. No API key required.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+        count: { type: 'number', description: 'Number of results (default: 5, max: 10)' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'fetch_url',
+    description: 'Fetch content from a URL and return as text. Useful for reading web pages, APIs, documentation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to fetch' },
+        maxLength: { type: 'number', description: 'Maximum response length in characters (default: 5000)' }
+      },
+      required: ['url']
+    }
   }
 ];
 
@@ -921,6 +945,98 @@ async function handleGenerateHtml({ filePath, htmlContent, openInBrowser }) {
   };
 }
 
+// ── Web Search & Fetch ──────────────────────────────────────────
+
+async function handleWebSearch({ query, count = 5 }) {
+  if (!query?.trim()) throw new Error('query is required');
+  const maxCount = Math.min(count, 10);
+
+  try {
+    // Use DuckDuckGo HTML search (no API key needed)
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+    });
+    const html = await response.text();
+
+    // Parse search results from DDG HTML
+    const results = [];
+    const resultPattern = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    while ((match = resultPattern.exec(html)) !== null && results.length < maxCount) {
+      const href = match[1].replace(/.*uddg=([^&]*).*/, (_, u) => decodeURIComponent(u));
+      const title = match[2].replace(/<[^>]*>/g, '').trim();
+      const snippet = match[3].replace(/<[^>]*>/g, '').trim();
+      if (title && href) {
+        results.push({ title, url: href, snippet });
+      }
+    }
+
+    // Fallback: simpler parsing
+    if (results.length === 0) {
+      const linkPattern = /<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
+      while ((match = linkPattern.exec(html)) !== null && results.length < maxCount) {
+        const title = match[1].replace(/<[^>]*>/g, '').trim();
+        if (title) results.push({ title, url: '', snippet: '' });
+      }
+    }
+
+    return {
+      query,
+      results,
+      count: results.length,
+    };
+  } catch (error) {
+    throw new Error(`Web search failed: ${error.message}`);
+  }
+}
+
+async function handleFetchUrl({ url, maxLength = 5000 }) {
+  if (!url?.trim()) throw new Error('url is required');
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    let text;
+
+    if (contentType.includes('application/json')) {
+      const json = await response.json();
+      text = JSON.stringify(json, null, 2);
+    } else {
+      text = await response.text();
+      // Strip HTML tags for readability
+      if (contentType.includes('text/html')) {
+        text = text
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+    }
+
+    return {
+      url,
+      status: response.status,
+      contentType,
+      content: text.slice(0, maxLength),
+      truncated: text.length > maxLength,
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch ${url}: ${error.message}`);
+  }
+}
+
 // ── Handler Map ────────────────────────────────────────────────
 
 const TOOL_HANDLERS = {
@@ -940,6 +1056,8 @@ const TOOL_HANDLERS = {
   control_app_window: handleControlAppWindow,
   generate_svg: handleGenerateSvg,
   generate_html: handleGenerateHtml,
+  web_search: handleWebSearch,
+  fetch_url: handleFetchUrl,
 };
 
 // ── Server Setup ───────────────────────────────────────────────

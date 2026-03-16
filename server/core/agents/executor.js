@@ -122,7 +122,7 @@ QUALITY RULES:
     };
   }
 
-  async execute(subtask, previousResults = [], { model } = {}) {
+  async execute(subtask, previousResults = [], { model, qualityResearch } = {}) {
     const maxRetries = 3;
     let totalUsage = null;
     let lastError = null;
@@ -140,6 +140,17 @@ QUALITY RULES:
           })),
           attempt: attempt + 1,
         };
+
+        // Include quality research context if available
+        if (qualityResearch && qualityResearch.quality_criteria?.length > 0) {
+          context.quality_requirements = {
+            criteria: qualityResearch.quality_criteria,
+            technical_specs: qualityResearch.technical_specs,
+            reference_description: qualityResearch.reference_description,
+            common_mistakes_to_avoid: qualityResearch.common_mistakes,
+            approach: qualityResearch.approach_recommendation,
+          };
+        }
 
         // If previous attempt failed, include error details so AI can correct
         if (lastError) {

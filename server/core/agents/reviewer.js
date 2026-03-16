@@ -38,14 +38,23 @@ Set "approved": false if quality_score < 0.5 — the output is unacceptable.`
     };
   }
 
-  async review(originalRequest, plan, results, { model } = {}) {
+  async review(originalRequest, plan, results, { model, qualityResearch } = {}) {
     try {
-      const { result, usage } = await this.claude.runAgent(this.config, {
+      const reviewInput = {
         task: 'review_results',
         original_request: originalRequest,
         plan,
         results,
-      }, { model });
+      };
+      // Include quality research criteria for evaluation
+      if (qualityResearch && qualityResearch.quality_criteria?.length > 0) {
+        reviewInput.quality_benchmarks = {
+          criteria: qualityResearch.quality_criteria,
+          technical_specs: qualityResearch.technical_specs,
+          reference_description: qualityResearch.reference_description,
+        };
+      }
+      const { result, usage } = await this.claude.runAgent(this.config, reviewInput, { model });
       return {
         approved: result.approved !== false,
         quality_score: result.quality_score || 0.9,

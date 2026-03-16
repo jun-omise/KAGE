@@ -80,6 +80,7 @@ export function classifyComplexity(message) {
  */
 const AGENT_TIER_MAP = {
   sentinel: { simple: 'fast', moderate: 'fast', complex: 'fast' },
+  researcher: { simple: 'balanced', moderate: 'balanced', complex: 'balanced' },
   reviewer: { simple: 'fast', moderate: 'fast', complex: 'fast' },
   planner:  { simple: 'balanced', moderate: 'balanced', complex: 'flagship' },
   executor: { simple: 'main', moderate: 'main', complex: 'main' },
@@ -151,7 +152,7 @@ export function getModelForAgent(agentRole, complexity, mainModelId) {
  * @returns {Object} Mapping of agentRole → { modelId, modelName, tier }
  */
 export function getRoutingPlan(complexity, mainModelId) {
-  const roles = ['sentinel', 'planner', 'executor', 'reviewer', 'final_response'];
+  const roles = ['sentinel', 'planner', 'researcher', 'executor', 'reviewer', 'final_response'];
   const plan = {};
 
   for (const role of roles) {
