@@ -72,7 +72,7 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS tool_configs (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      type TEXT CHECK(type IN ('builtin', 'custom', 'mcp')),
+      type TEXT CHECK(type IN ('builtin', 'custom', 'mcp', 'skill')),
       config JSON,
       permissions JSON,
       enabled BOOLEAN DEFAULT 0,
@@ -141,11 +141,22 @@ function initSchema() {
       last_active DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS approval_queue (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT,
+      action_type TEXT NOT NULL,
+      action_details TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id);
     CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type);
     CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
     CREATE INDEX IF NOT EXISTS idx_cost_tracking_date ON cost_tracking(date);
+    CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_queue(status);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_messaging_session_user ON messaging_sessions(platform, platform_user_id);
   `);
 

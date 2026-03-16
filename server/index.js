@@ -21,6 +21,7 @@ import messagingConfigRoutes from './routes/messaging-config.js';
 import taskQueueRoutes from './routes/task-queue.js';
 import scheduler from './core/scheduler.js';
 import skillLoader from './mcp/skill-loader.js';
+import { errorHandler } from './middleware/error-handler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -57,8 +58,11 @@ app.use('/api/queue', taskQueueRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '0.1.0' });
+  res.json({ status: 'ok', version: '0.1.0', uptime: process.uptime() });
 });
+
+// Global error handler (must be after all routes)
+app.use(errorHandler);
 
 // Production mode: serve client build
 if (process.env.NODE_ENV === 'production' || process.env.ELECTRON) {
