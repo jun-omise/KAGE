@@ -19,6 +19,8 @@ import notificationRoutes from './routes/notifications.js';
 import webhookRoutes from './routes/webhooks.js';
 import messagingConfigRoutes from './routes/messaging-config.js';
 import taskQueueRoutes from './routes/task-queue.js';
+import agentRoutes from './routes/agents.js';
+import dbRoutes from './routes/db.js';
 import scheduler from './core/scheduler.js';
 import skillLoader from './mcp/skill-loader.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -55,6 +57,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/messaging', messagingConfigRoutes);
 app.use('/api/queue', taskQueueRoutes);
+app.use('/api/agents', agentRoutes);
+app.use('/api/db', dbRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

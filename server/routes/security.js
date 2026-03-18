@@ -146,6 +146,56 @@ router.get('/cost', (req, res) => {
   }
 });
 
+// GET /score - Security score calculation
+router.get('/score', (req, res) => {
+  try {
+    const db = getDb();
+    let config = DEFAULT_SECURITY_CONFIG;
+    const row = db.prepare("SELECT value FROM config WHERE key = 'security_config'").get();
+    if (row) config = JSON.parse(row.value);
+
+    let score = 100;
+    const deductions = [];
+    const perms = config.permissions || {};
+
+    // Permission-based deductions
+    if (perms.auto_approve_write || perms.write === 'auto') {
+      score -= 20;
+      deductions.push({ reason: 'Write operations auto-approved', points: -20 });
+    }
+    if (perms.auto_approve_delete || perms.delete === 'auto') {
+      score -= 25;
+      deductions.push({ reason: 'Delete operations auto-approved', points: -25 });
+    }
+    if (perms.auto_approve_external || perms.external === 'auto') {
+      score -= 10;
+      deductions.push({ reason: 'External API auto-approved', points: -10 });
+    }
+
+    // Cost limit deductions
+    const costs = config.cost || config.costLimits || {};
+    const dailyLimit = costs.daily_limit ?? costs.daily ?? 10;
+    const monthlyLimit = costs.monthly_limit ?? costs.monthly ?? 100;
+    if (!dailyLimit && !monthlyLimit) {
+      score -= 10;
+      deductions.push({ reason: 'No cost limits configured', points: -10 });
+    }
+
+    // PII protection
+    if (config.pii_protection?.enabled === false) {
+      score -= 15;
+      deductions.push({ reason: 'PII protection disabled', points: -15 });
+    }
+
+    score = Math.max(0, Math.min(100, score));
+
+    res.json({ score, deductions });
+  } catch (error) {
+    console.error('Security score error:', error);
+    res.status(500).json({ error: 'Failed to calculate security score' });
+  }
+});
+
 // POST /kill - Emergency stop all agents
 router.post('/kill', (req, res) => {
   try {

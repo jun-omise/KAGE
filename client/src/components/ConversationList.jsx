@@ -33,10 +33,13 @@ export default function ConversationList({ conversations, activeId, onSelect, on
       {conversations.map((conv) => {
         const isActive = conv.id === activeId;
         return (
-          <button
+          <div
             key={conv.id}
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect(conv.id)}
-            className={`group relative w-full text-left px-3 py-2.5 rounded-lg transition-all duration-200
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(conv.id); }}
+            className={`group relative w-full text-left px-3 py-2.5 rounded-lg transition-all duration-200 cursor-pointer
               ${isActive
                 ? 'bg-kage-primary/10 border border-kage-primary/30'
                 : 'hover:bg-white/5 border border-transparent'
@@ -82,7 +85,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
                 <Trash2 size={14} />
               </button>
             )}
-          </button>
+          </div>
         );
       })}
     </div>

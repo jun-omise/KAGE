@@ -3,6 +3,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, writeFileSync, copyFileSync } from 'fs';
 import { spawn } from 'child_process';
+import { autoUpdater } from 'electron-updater';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -275,6 +276,56 @@ function createMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * Auto-update: check GitHub Releases for new versions
+ */
+function setupAutoUpdater() {
+  if (isDev) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Available',
+      message: `KAGE v${info.version} is available. Would you like to download it now?`,
+      detail: 'The update will be downloaded in the background.',
+      buttons: ['Download', 'Later'],
+      defaultId: 0,
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.downloadUpdate();
+      }
+    });
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded. KAGE will restart to install it.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.error('Auto-update error:', error);
+  });
+
+  // Check for updates 5 seconds after launch
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('Update check failed:', err);
+    });
+  }, 5000);
+}
+
 // App lifecycle
 app.whenReady().then(async () => {
   if (isDev) {
@@ -316,6 +367,7 @@ app.whenReady().then(async () => {
 
   createMenu();
   createWindow(serverPort);
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

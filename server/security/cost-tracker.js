@@ -16,7 +16,7 @@ export class CostTracker {
   }
 
   /**
-   * Get total cost for today.
+   * Get total cost for today (simple).
    */
   getTodayCost() {
     try {
@@ -31,7 +31,30 @@ export class CostTracker {
   }
 
   /**
-   * Get total cost for this month.
+   * Get detailed daily cost data.
+   * @param {string} [date] - Optional date string (YYYY-MM-DD), defaults to today
+   * @returns {{ cost: number, inputTokens: number, outputTokens: number, taskCount: number }}
+   */
+  getDailyCost(date) {
+    try {
+      const db = getDb();
+      const dateStr = date || new Date().toISOString().slice(0, 10);
+      const row = db.prepare(
+        "SELECT COALESCE(SUM(cost), 0) as cost, COALESCE(SUM(input_tokens), 0) as inputTokens, COALESCE(SUM(output_tokens), 0) as outputTokens, COALESCE(SUM(task_count), 0) as taskCount FROM cost_tracking WHERE date = ?"
+      ).get(dateStr);
+      return {
+        cost: row?.cost || 0,
+        inputTokens: row?.inputTokens || 0,
+        outputTokens: row?.outputTokens || 0,
+        taskCount: row?.taskCount || 0,
+      };
+    } catch {
+      return { cost: 0, inputTokens: 0, outputTokens: 0, taskCount: 0 };
+    }
+  }
+
+  /**
+   * Get total cost for this month (simple).
    */
   getMonthlyCost() {
     try {
@@ -42,6 +65,29 @@ export class CostTracker {
       return row?.total || 0;
     } catch {
       return 0;
+    }
+  }
+
+  /**
+   * Get detailed monthly cost data.
+   * @param {string} [month] - Optional month string (YYYY-MM), defaults to current
+   * @returns {{ cost: number, inputTokens: number, outputTokens: number, taskCount: number }}
+   */
+  getDetailedMonthlyCost(month) {
+    try {
+      const db = getDb();
+      const monthStr = month || new Date().toISOString().slice(0, 7);
+      const row = db.prepare(
+        "SELECT COALESCE(SUM(cost), 0) as cost, COALESCE(SUM(input_tokens), 0) as inputTokens, COALESCE(SUM(output_tokens), 0) as outputTokens, COALESCE(SUM(task_count), 0) as taskCount FROM cost_tracking WHERE substr(date, 1, 7) = ?"
+      ).get(monthStr);
+      return {
+        cost: row?.cost || 0,
+        inputTokens: row?.inputTokens || 0,
+        outputTokens: row?.outputTokens || 0,
+        taskCount: row?.taskCount || 0,
+      };
+    } catch {
+      return { cost: 0, inputTokens: 0, outputTokens: 0, taskCount: 0 };
     }
   }
 
@@ -85,6 +131,57 @@ export class CostTracker {
     }
 
     return { exceeded: false, reason: '', daily, monthly };
+  }
+
+  /**
+   * Check if an estimated cost would exceed limits.
+   * @param {number} estimatedCost - The estimated cost of the next operation
+   * @returns {{ allowed: boolean, reason: string|null, dailyRemaining: number, monthlyRemaining: number }}
+   */
+  checkLimit(estimatedCost = 0) {
+    const daily = this.getTodayCost();
+    const monthly = this.getMonthlyCost();
+
+    let dailyLimit = 10.00;
+    let monthlyLimit = 100.00;
+    let perTaskLimit = 1.00;
+    let alertThreshold = 0.80;
+    try {
+      const db = getDb();
+      const row = db.prepare("SELECT value FROM config WHERE key = 'security_config'").get();
+      if (row) {
+        const config = JSON.parse(row.value);
+        dailyLimit = config.cost?.daily_limit ?? config.costLimits?.daily ?? 10.00;
+        monthlyLimit = config.cost?.monthly_limit ?? config.costLimits?.monthly ?? 100.00;
+        perTaskLimit = config.cost?.per_task_limit ?? config.costLimits?.perTask ?? 1.00;
+        alertThreshold = config.cost?.alert_threshold ?? 0.80;
+      }
+    } catch {}
+
+    const dailyRemaining = Math.max(0, dailyLimit - daily);
+    const monthlyRemaining = Math.max(0, monthlyLimit - monthly);
+
+    if (estimatedCost > perTaskLimit) {
+      return { allowed: false, reason: `Estimated cost $${estimatedCost.toFixed(4)} exceeds per-task limit of $${perTaskLimit.toFixed(2)}`, dailyRemaining, monthlyRemaining };
+    }
+    if (daily + estimatedCost > dailyLimit) {
+      return { allowed: false, reason: `Would exceed daily limit ($${dailyLimit.toFixed(2)})`, dailyRemaining, monthlyRemaining };
+    }
+    if (monthly + estimatedCost > monthlyLimit) {
+      return { allowed: false, reason: `Would exceed monthly limit ($${monthlyLimit.toFixed(2)})`, dailyRemaining, monthlyRemaining };
+    }
+
+    // 80% threshold alert
+    const alertReason = [];
+    if (daily / dailyLimit >= alertThreshold) alertReason.push(`Daily usage at ${Math.round(daily / dailyLimit * 100)}%`);
+    if (monthly / monthlyLimit >= alertThreshold) alertReason.push(`Monthly usage at ${Math.round(monthly / monthlyLimit * 100)}%`);
+
+    return {
+      allowed: true,
+      reason: alertReason.length > 0 ? alertReason.join('; ') : null,
+      dailyRemaining,
+      monthlyRemaining,
+    };
   }
 
   /**

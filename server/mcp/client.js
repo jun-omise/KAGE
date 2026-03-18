@@ -1,38 +1,98 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
+const MAX_RECONNECT_RETRIES = 3;
+const RECONNECT_DELAY_MS = 2000;
+
 class MCPManager {
   constructor() {
     this.clients = new Map();
     this.toolRegistry = new Map();
+    this.serverConfigs = new Map(); // Store configs for reconnection
   }
 
-  async connectServer(serverConfig) {
-    const transport = new StdioClientTransport({
-      command: serverConfig.command,
-      args: serverConfig.args || [],
-      env: { ...process.env, ...this.resolveEnv(serverConfig.env) },
-    });
-
-    const client = new Client({
-      name: 'kage',
-      version: '1.0.0',
-    });
-
-    await client.connect(transport);
-
-    const tools = await client.listTools();
-    for (const tool of tools.tools) {
-      this.toolRegistry.set(tool.name, {
-        serverId: serverConfig.id,
-        schema: tool.inputSchema,
-        description: tool.description,
-        permissions: serverConfig.permissions,
+  async connectServer(serverConfig, { retryCount = 0 } = {}) {
+    try {
+      const transport = new StdioClientTransport({
+        command: serverConfig.command,
+        args: serverConfig.args || [],
+        env: { ...process.env, ...this.resolveEnv(serverConfig.env) },
       });
-    }
 
-    this.clients.set(serverConfig.id, client);
-    return tools.tools;
+      const client = new Client({
+        name: 'kage',
+        version: '1.0.0',
+      });
+
+      await client.connect(transport);
+
+      const tools = await client.listTools();
+      for (const tool of tools.tools) {
+        this.toolRegistry.set(tool.name, {
+          serverId: serverConfig.id,
+          schema: tool.inputSchema,
+          description: tool.description,
+          permissions: serverConfig.permissions,
+        });
+      }
+
+      this.clients.set(serverConfig.id, client);
+      this.serverConfigs.set(serverConfig.id, serverConfig);
+
+      // Monitor for disconnection and auto-reconnect
+      this._watchConnection(serverConfig.id);
+
+      return tools.tools;
+    } catch (error) {
+      // Auto-reconnect with retry
+      if (retryCount < MAX_RECONNECT_RETRIES) {
+        console.warn(`[MCP] Connection to ${serverConfig.id} failed (attempt ${retryCount + 1}/${MAX_RECONNECT_RETRIES}): ${error.message}`);
+        await new Promise(r => setTimeout(r, RECONNECT_DELAY_MS * (retryCount + 1)));
+        return this.connectServer(serverConfig, { retryCount: retryCount + 1 });
+      }
+      // Clean up partial state
+      this.clients.delete(serverConfig.id);
+      for (const [name, info] of this.toolRegistry) {
+        if (info.serverId === serverConfig.id) this.toolRegistry.delete(name);
+      }
+      throw new Error(`Failed to connect to ${serverConfig.id} after ${MAX_RECONNECT_RETRIES} attempts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Watch a connected server and attempt reconnection on disconnect
+   */
+  _watchConnection(serverId) {
+    const client = this.clients.get(serverId);
+    if (!client) return;
+
+    const onClose = async () => {
+      console.warn(`[MCP] Server ${serverId} disconnected, attempting reconnection...`);
+      this.clients.delete(serverId);
+      // Remove tools from this server
+      for (const [name, info] of this.toolRegistry) {
+        if (info.serverId === serverId) this.toolRegistry.delete(name);
+      }
+      // Attempt reconnection
+      const config = this.serverConfigs.get(serverId);
+      if (config) {
+        try {
+          await this.connectServer(config);
+          console.log(`[MCP] Successfully reconnected to ${serverId}`);
+        } catch (e) {
+          console.error(`[MCP] Failed to reconnect to ${serverId}: ${e.message}`);
+        }
+      }
+    };
+
+    // Listen for transport close events
+    if (client.transport && typeof client.transport.onclose === 'function') {
+      const origOnClose = client.transport.onclose;
+      client.transport.onclose = () => {
+        if (origOnClose) origOnClose();
+        onClose();
+      };
+    }
   }
 
   async callTool(toolName, args) {
@@ -76,8 +136,9 @@ class MCPManager {
   async disconnectServer(serverId) {
     const client = this.clients.get(serverId);
     if (client) {
-      await client.close();
+      try { await client.close(); } catch {}
       this.clients.delete(serverId);
+      this.serverConfigs.delete(serverId);
       for (const [name, info] of this.toolRegistry) {
         if (info.serverId === serverId) {
           this.toolRegistry.delete(name);

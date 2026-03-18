@@ -31,7 +31,7 @@ export const BUILTIN_MCP_SERVERS = [
     description: 'Local file system read/write access',
     category: 'development',
     command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-filesystem', process.env.HOME || '/tmp'],
+    args: ['-y', '@modelcontextprotocol/server-filesystem', process.env.HOME || '/tmp', '/tmp', '/private/tmp'],
     permissions: ['read', 'write'],
     default_enabled: true,
     envKeys: [],
@@ -840,6 +840,20 @@ export const BUILTIN_MCP_SERVERS = [
     envKeys: ['MAKE_API_TOKEN'],
   },
 ];
+
+// Post-process: Add riskLevel based on permissions if not explicitly set
+for (const server of BUILTIN_MCP_SERVERS) {
+  if (!server.riskLevel) {
+    const perms = server.permissions || [];
+    if (perms.includes('admin') || perms.includes('execute')) {
+      server.riskLevel = 'high';
+    } else if (perms.includes('write')) {
+      server.riskLevel = 'medium';
+    } else {
+      server.riskLevel = 'low';
+    }
+  }
+}
 
 /**
  * Get servers grouped by category

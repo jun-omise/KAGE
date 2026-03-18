@@ -74,22 +74,26 @@ export default function SecurityPanel() {
     setLoading(true);
     setError('');
     try {
-      const [cfgRes, costRes, evtRes] = await Promise.all([
+      const [cfgRes, costRes, evtRes, scoreRes] = await Promise.all([
         fetch('/api/security/config'),
         fetch('/api/security/cost'),
         fetch('/api/security/events'),
+        fetch('/api/security/score'),
       ]);
       if (!cfgRes.ok) throw new Error('Failed to load security config');
       const cfg = await cfgRes.json();
       setConfig(cfg);
-      setPerTask(String(cfg.costLimits?.perTask ?? ''));
-      setDaily(String(cfg.costLimits?.daily ?? ''));
-      setMonthly(String(cfg.costLimits?.monthly ?? ''));
+
+      // Map both legacy and new config formats
+      setPerTask(String(cfg.cost?.per_task_limit ?? cfg.costLimits?.perTask ?? '1.00'));
+      setDaily(String(cfg.cost?.daily_limit ?? cfg.costLimits?.daily ?? '10.00'));
+      setMonthly(String(cfg.cost?.monthly_limit ?? cfg.costLimits?.monthly ?? '100.00'));
+      const permsRaw = cfg.permissions || {};
       setPermissions({
-        read: cfg.permissions?.read || 'confirm',
-        write: cfg.permissions?.write || 'confirm',
-        delete: cfg.permissions?.delete || 'confirm',
-        external: cfg.permissions?.external || 'confirm',
+        read: permsRaw.read || (permsRaw.auto_approve_read ? 'auto' : 'confirm'),
+        write: permsRaw.write || (permsRaw.auto_approve_write ? 'auto' : 'confirm'),
+        delete: permsRaw.delete || (permsRaw.auto_approve_delete ? 'auto' : 'confirm'),
+        external: permsRaw.external || (permsRaw.auto_approve_external ? 'auto' : 'confirm'),
       });
 
       if (costRes.ok) {
@@ -98,6 +102,11 @@ export default function SecurityPanel() {
       if (evtRes.ok) {
         const evtData = await evtRes.json();
         setEvents(Array.isArray(evtData) ? evtData : evtData.events || []);
+      }
+      // Use server-calculated score if available
+      if (scoreRes.ok) {
+        const scoreData = await scoreRes.json();
+        setConfig(prev => ({ ...prev, _serverScore: scoreData.score }));
       }
     } catch (err) {
       setError(err.message);
@@ -161,7 +170,7 @@ export default function SecurityPanel() {
     URL.revokeObjectURL(url);
   }, [events]);
 
-  const score = calcScore(config);
+  const score = config?._serverScore ?? calcScore(config);
   const scoreMeta = getScoreMeta(score);
 
   if (loading) {
@@ -173,7 +182,7 @@ export default function SecurityPanel() {
   }
 
   const todayTasks = costData?.tasksToday ?? 0;
-  const todayCost = costData?.costToday ?? 0;
+  const todayCost = costData?.today ?? costData?.costToday ?? 0;
   const todayBlocks = costData?.blocksToday ?? 0;
   const pendingApprovals = costData?.pendingApprovals ?? 0;
 
@@ -353,21 +362,36 @@ export default function SecurityPanel() {
               {events.length === 0 ? (
                 <p className="text-xs text-kage-sub text-center py-4">{t('common.loading')}</p>
               ) : (
-                events.slice(0, 50).map((evt, i) => (
-                  <div key={evt.id || i} className="flex items-start gap-2 bg-kage-bg rounded-lg px-3 py-2">
-                    {evt.level === 'error' ? (
-                      <XCircle size={14} className="text-kage-danger flex-shrink-0 mt-0.5" />
-                    ) : evt.level === 'warning' ? (
-                      <AlertTriangle size={14} className="text-kage-warning flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <CheckCircle size={14} className="text-kage-success flex-shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-kage-text truncate">{evt.message || evt.action || ''}</div>
-                      <div className="text-[10px] text-kage-sub">{evt.timestamp ? new Date(evt.timestamp).toLocaleString() : ''}</div>
+                events.slice(0, 50).map((evt, i) => {
+                  const eventType = evt.event_type || evt.level || '';
+                  const isError = ['blocked', 'cost_limit', 'alert'].includes(eventType);
+                  const isWarning = ['pii_detected'].includes(eventType);
+                  const details = typeof evt.details === 'string' ? JSON.parse(evt.details || '{}') : (evt.details || {});
+                  const message = details.reason || details.action || details.message || evt.message || eventType;
+                  const timestamp = evt.created_at || evt.timestamp;
+
+                  return (
+                    <div key={evt.id || i} className="flex items-start gap-2 bg-kage-bg rounded-lg px-3 py-2">
+                      {isError ? (
+                        <XCircle size={14} className="text-kage-danger flex-shrink-0 mt-0.5" />
+                      ) : isWarning ? (
+                        <AlertTriangle size={14} className="text-kage-warning flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <CheckCircle size={14} className="text-kage-success flex-shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            isError ? 'bg-kage-danger/10 text-kage-danger' : isWarning ? 'bg-kage-warning/10 text-kage-warning' : 'bg-kage-success/10 text-kage-success'
+                          }`}>{eventType}</span>
+                          {evt.agent && <span className="text-[10px] text-kage-sub">{evt.agent}</span>}
+                        </div>
+                        <div className="text-xs text-kage-text truncate mt-0.5">{message}</div>
+                        <div className="text-[10px] text-kage-sub">{timestamp ? new Date(timestamp).toLocaleString() : ''}</div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}

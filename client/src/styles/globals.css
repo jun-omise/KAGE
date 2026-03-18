@@ -35,6 +35,16 @@
   }
 }
 
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   .kage-card {
     @apply bg-kage-card border border-kage-border rounded-lg;
@@ -99,4 +109,49 @@
 
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
+}
+
+/* Phase 5: UI Polish */
+
+/* Fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Card hover */
+.card-hover {
+  @apply transition-all duration-200;
+}
+.card-hover:hover {
+  @apply border-kage-border bg-kage-card/80 shadow-sm;
+}
+
+/* Button press */
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+/* Status badges */
+.badge-success { @apply bg-kage-success/10 text-kage-success border border-kage-success/20 rounded-full px-2 py-0.5 text-xs; }
+.badge-warning { @apply bg-kage-warning/10 text-kage-warning border border-kage-warning/20 rounded-full px-2 py-0.5 text-xs; }
+.badge-danger { @apply bg-kage-danger/10 text-kage-danger border border-kage-danger/20 rounded-full px-2 py-0.5 text-xs; }
+
+/* Toast animation */
+@keyframes toast-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+.toast-enter {
+  animation: toast-in 0.3s ease-out;
+}
+.toast-exit {
+  animation: toast-out 0.3s ease-in forwards;
 }

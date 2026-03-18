@@ -77,10 +77,10 @@ export class LoopDetector {
     const timer = this.taskTimers.get(taskId);
     if (timer) {
       const elapsed = Date.now() - timer.startTime;
-      if (elapsed >= (limits.max_task_duration_ms || 60000)) {
+      if (elapsed >= (limits.max_task_duration_ms || 300000)) {
         return {
           exceeded: true,
-          reason: `Task duration ${elapsed}ms exceeded limit of ${limits.max_task_duration_ms || 60000}ms`,
+          reason: `Task duration ${elapsed}ms exceeded limit of ${limits.max_task_duration_ms || 300000}ms`,
         };
       }
 

@@ -19,10 +19,12 @@ const INITIAL_STATE = {
   mcpAutoConnect: [],
 };
 
-export function useSSE(conversationId) {
+export function useSSE(conversationId, { onResponseChunk } = {}) {
   const [state, setState] = useState(INITIAL_STATE);
   const eventSourceRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const onResponseChunkRef = useRef(onResponseChunk);
+  onResponseChunkRef.current = onResponseChunk;
 
   const connect = useCallback(() => {
     if (!conversationId) return;
@@ -90,7 +92,15 @@ export function useSSE(conversationId) {
       const data = JSON.parse(e.data);
       setState(prev => safeAgentUpdate(prev, data.agent, (cur) => ({
         ...cur,
-        logs: [...(cur.logs || []), { type: 'tool_result', result: data.result, timestamp: Date.now() }],
+        logs: [...(cur.logs || []), {
+          type: 'tool_result',
+          tool: data.tool,
+          result: data.result,
+          success: data.success,
+          duration_ms: data.duration_ms,
+          subtaskId: data.subtaskId,
+          timestamp: Date.now(),
+        }],
         progress: data.progress ?? cur.progress,
       })));
     });
@@ -130,6 +140,10 @@ export function useSSE(conversationId) {
         ...prev,
         responseChunks: [...prev.responseChunks, data.chunk],
       }));
+      // Forward chunk to useChat for real-time streaming display
+      if (onResponseChunkRef.current) {
+        onResponseChunkRef.current(data.chunk);
+      }
     });
 
     es.addEventListener('response:done', (e) => {
@@ -236,6 +250,12 @@ export function useSSE(conversationId) {
         ...prev,
         mcpAutoConnect: [...prev.mcpAutoConnect, { serverId: data.serverId, serverName: data.serverName, status: 'env_required', missingKeys: data.missingKeys }],
       }));
+    });
+
+    // Response error event
+    es.addEventListener('response:error', (e) => {
+      const data = JSON.parse(e.data);
+      console.error('[SSE] Response error:', data.error);
     });
 
     // Pipeline routing info

@@ -1,19 +1,71 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Paperclip, Loader2, MessageSquare } from 'lucide-react';
+import React, { useRef, useEffect, useCallback } from 'react';
+import { Loader2, MessageSquare, Wrench, CheckCircle, Shield, Brain, Zap, ClipboardCheck } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useI18n } from '../i18n/index.jsx';
 import MessageBubble from './MessageBubble';
+import MessageInput from './MessageInput';
 import ProgressIndicator from './ProgressIndicator';
-import MCPSuggestionBanner from './MCPSuggestionBanner';
-import { useMCPSuggestions } from '../hooks/useMCPSuggestions';
 
-export default function ChatPanel({ messages, isLoading, onSendMessage, pipelineProgress, subtaskProgress }) {
+const AGENT_ICONS = {
+  sentinel: Shield,
+  planner: Brain,
+  executor: Zap,
+  reviewer: ClipboardCheck,
+};
+
+const AGENT_COLORS = {
+  sentinel: 'text-yellow-400',
+  planner: 'text-purple-400',
+  executor: 'text-blue-400',
+  reviewer: 'text-green-400',
+};
+
+function LiveToolCall({ agentStates }) {
+  if (!agentStates) return null;
+
+  // Find the currently active agent and its latest tool call
+  const activeAgents = Object.entries(agentStates)
+    .filter(([_, state]) => state.status === 'active' || state.status === 'running');
+
+  if (activeAgents.length === 0) return null;
+
+  return (
+    <div className="space-y-1 mb-2">
+      {activeAgents.map(([name, state]) => {
+        const Icon = AGENT_ICONS[name] || Wrench;
+        const color = AGENT_COLORS[name] || 'text-kage-sub';
+        const lastLog = state.logs?.[state.logs.length - 1];
+        const isToolCall = lastLog?.type === 'tool_call';
+
+        return (
+          <div key={name} className="flex items-center gap-2 text-xs">
+            <Icon size={13} className={`${color} animate-pulse`} />
+            <span className={`font-medium ${color} capitalize`}>{name}</span>
+            {isToolCall && (
+              <span className="text-kage-sub font-mono truncate">
+                {lastLog.tool}
+              </span>
+            )}
+            {lastLog?.type === 'thinking' && (
+              <span className="text-kage-sub truncate italic">
+                {typeof lastLog.message === 'string' ? lastLog.message.slice(0, 60) : 'thinking...'}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function ChatPanel({
+  messages, isLoading, onSendMessage,
+  pipelineProgress, subtaskProgress, streamingText,
+  agentStates,
+}) {
   const { t } = useI18n();
-  const [input, setInput] = useState('');
-  const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-
-  const { suggestions, connectServer, dismiss } = useMCPSuggestions(input);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -21,40 +73,13 @@ export default function ChatPanel({ messages, isLoading, onSendMessage, pipeline
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
-    }
-  }, [input]);
-
-  const handleSend = useCallback(() => {
-    if (!input.trim() || isLoading) return;
-    onSendMessage(input.trim());
-    setInput('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-  }, [input, isLoading, onSendMessage]);
-
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
-
-  const handleFileClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  }, [messages, streamingText, scrollToBottom]);
 
   return (
     <div className="flex flex-col h-full bg-kage-bg">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-2xl bg-kage-primary/10 flex items-center justify-center mb-4">
               <MessageSquare size={28} className="text-kage-primary" />
@@ -70,13 +95,28 @@ export default function ChatPanel({ messages, isLoading, onSendMessage, pipeline
               <MessageBubble key={msg.id} message={msg} />
             ))}
 
-            {isLoading && (
+            {/* Streaming response display */}
+            {isLoading && streamingText && (
               <div className="flex justify-start animate-slide-up">
-                <div className="bg-kage-card border border-kage-border rounded-2xl rounded-bl-md px-4 py-3 max-w-[80%] w-full">
+                <div className="bg-kage-card border border-kage-border/50 rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%] text-kage-text">
+                  <LiveToolCall agentStates={agentStates} />
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {streamingText}
+                  </ReactMarkdown>
+                  <span className="inline-block w-1.5 h-4 bg-kage-primary animate-pulse ml-0.5 align-text-bottom" />
+                </div>
+              </div>
+            )}
+
+            {/* Loading indicator (before streaming starts) */}
+            {isLoading && !streamingText && (
+              <div className="flex justify-start animate-slide-up">
+                <div className="bg-kage-card border border-kage-border/50 rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%] w-full">
                   {pipelineProgress ? (
                     <ProgressIndicator
                       pipelineProgress={pipelineProgress}
                       subtaskProgress={subtaskProgress}
+                      agentStates={agentStates}
                       compact
                     />
                   ) : (
@@ -95,52 +135,7 @@ export default function ChatPanel({ messages, isLoading, onSendMessage, pipeline
       </div>
 
       {/* Input area */}
-      <div className="border-t border-kage-border px-4 py-3">
-        <div className="max-w-3xl mx-auto">
-          {/* MCP Suggestion Banner */}
-          <MCPSuggestionBanner
-            suggestions={suggestions}
-            onConnect={connectServer}
-            onDismiss={dismiss}
-          />
-
-          <div className="flex items-end gap-2 bg-kage-card border border-kage-border rounded-xl px-3 py-2">
-            <button
-              onClick={handleFileClick}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-kage-sub hover:text-kage-text transition-colors flex-shrink-0 mb-0.5"
-              title="Attach file"
-            >
-              <Paperclip size={18} />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              multiple
-            />
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t('chat.placeholder')}
-              rows={1}
-              className="flex-1 bg-transparent border-none outline-none resize-none text-kage-text placeholder-kage-sub text-sm py-1.5 max-h-40"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className={`p-1.5 rounded-lg flex-shrink-0 mb-0.5 transition-all duration-200 ${
-                input.trim() && !isLoading
-                  ? 'bg-kage-primary text-white hover:bg-kage-primary/80'
-                  : 'text-kage-sub/40 cursor-not-allowed'
-              }`}
-            >
-              <Send size={18} />
-            </button>
-          </div>
-        </div>
-      </div>
+      <MessageInput isLoading={isLoading} onSendMessage={onSendMessage} />
     </div>
   );
 }

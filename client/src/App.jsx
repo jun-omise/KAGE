@@ -1,4 +1,5 @@
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { ToastProvider } from './components/Toast.jsx';
 import MainLayout from './components/layout/MainLayout.jsx';
 import Login from './pages/Login.jsx';
 import Setup from './pages/Setup.jsx';
@@ -23,7 +24,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }

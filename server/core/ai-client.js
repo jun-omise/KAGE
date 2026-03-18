@@ -168,6 +168,103 @@ class AIClient {
   }
 
   /**
+   * Stream chat response — yields text chunks via callback
+   * Falls back to non-streaming for providers that don't support it easily
+   */
+  async chatStream(messages, { systemPrompt, maxTokens = 4096, model, onChunk } = {}) {
+    const modelId = model || this._activeModel;
+    const modelInfo = getModelById(modelId);
+    if (!modelInfo) throw new Error(`Unknown model: ${modelId}`);
+
+    const provider = MODEL_PROVIDERS[modelInfo.provider];
+
+    if (provider.apiFormat === 'anthropic') {
+      const client = this._getAnthropicClient();
+      const params = { model: modelId, max_tokens: maxTokens, messages };
+      if (systemPrompt) params.system = systemPrompt;
+
+      const stream = client.messages.stream(params);
+      let fullText = '';
+
+      stream.on('text', (text) => {
+        fullText += text;
+        if (onChunk) onChunk(text);
+      });
+
+      const finalMessage = await stream.finalMessage();
+      const usage = finalMessage.usage || null;
+      return { response: fullText, usage };
+    }
+
+    if (provider.apiFormat === 'openai') {
+      // OpenAI-compatible streaming
+      const apiKey = this._getApiKey(modelInfo.provider);
+      if (!apiKey) throw new Error(`${provider.name} API key not configured`);
+
+      const body = {
+        model: modelId,
+        max_tokens: maxTokens,
+        messages: [],
+        stream: true,
+      };
+      if (systemPrompt) body.messages.push({ role: 'system', content: systemPrompt });
+      body.messages.push(...messages);
+
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+      if (modelInfo.provider === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://kage.local';
+        headers['X-Title'] = 'KAGE';
+      }
+
+      const res = await fetch(`${provider.baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`${provider.name} API error (${res.status}): ${err}`);
+      }
+
+      let fullText = '';
+      let usage = null;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') continue;
+          try {
+            const data = JSON.parse(payload);
+            const delta = data.choices?.[0]?.delta?.content;
+            if (delta) {
+              fullText += delta;
+              if (onChunk) onChunk(delta);
+            }
+            if (data.usage) {
+              usage = { input_tokens: data.usage.prompt_tokens || 0, output_tokens: data.usage.completion_tokens || 0 };
+            }
+          } catch {}
+        }
+      }
+
+      // Estimate usage if not provided
+      if (!usage) usage = { input_tokens: 0, output_tokens: 0 };
+      return { response: fullText, usage };
+    }
+
+    // Fallback: non-streaming, emit full response as single chunk
+    const result = await this.chat(messages, { systemPrompt, maxTokens, model });
+    const text = result.content.find(c => c.type === 'text')?.text || '';
+    if (onChunk) onChunk(text);
+    return { response: text, usage: result.usage || null };
+  }
+
+  /**
    * Unified chat interface — routes to the correct provider
    */
   async chat(messages, { systemPrompt, tools, stream = false, maxTokens = 4096, model } = {}) {

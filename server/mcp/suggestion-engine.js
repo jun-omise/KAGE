@@ -133,6 +133,9 @@ const KEYWORD_MAP = {
   local_apps: {
     keywords: [
       'excel', 'spreadsheet', 'xlsx', 'csv', 'powerpoint', 'pptx', 'presentation', 'slides',
+      'html', 'svg', 'web page', 'webpage', 'generate html', 'generate svg',
+      'draw', 'drawing', 'illustration', 'chart', 'graph', 'diagram', 'art',
+      '描く', '描いて', '絵', 'イラスト', 'チャート', 'グラフ', '図',
       'open app', 'launch app', 'run app', 'start app', 'application',
       'applescript', 'screenshot', 'window', 'keystroke', 'keyboard',
       'word', 'numbers', 'keynote', 'pages', 'finder',

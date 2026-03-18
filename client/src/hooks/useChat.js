@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 export function useChat() {
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [streamingText, setStreamingText] = useState('');
+  const streamingTextRef = useRef('');
 
   const loadConversations = useCallback(async () => {
     try {
@@ -56,6 +58,18 @@ export function useChat() {
     }
   }, [loadConversations]);
 
+  // Called by SSE hook when response:chunk arrives
+  const appendStreamingChunk = useCallback((chunk) => {
+    streamingTextRef.current += chunk;
+    setStreamingText(streamingTextRef.current);
+  }, []);
+
+  // Reset streaming state
+  const clearStreaming = useCallback(() => {
+    streamingTextRef.current = '';
+    setStreamingText('');
+  }, []);
+
   const sendMessage = useCallback(async (text, conversationId, { getFileResults, clearFileResults } = {}) => {
     if (!text.trim() || !conversationId) return;
 
@@ -69,6 +83,9 @@ export function useChat() {
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
     setError(null);
+    // Reset streaming text for new message
+    streamingTextRef.current = '';
+    setStreamingText('');
 
     try {
       const res = await fetch('/api/chat', {
@@ -95,13 +112,16 @@ export function useChat() {
         };
         setMessages(prev => [...prev, assistantMessage]);
 
-        // Clear collected file results
+        // Clear collected file results and streaming text
         if (clearFileResults) clearFileResults();
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setIsLoading(false);
+      // Clear streaming state after response is committed
+      streamingTextRef.current = '';
+      setStreamingText('');
     }
   }, []);
 
@@ -110,11 +130,14 @@ export function useChat() {
     conversations,
     isLoading,
     error,
+    streamingText,
     sendMessage,
     loadConversation,
     loadConversations,
     createConversation,
     deleteConversation,
     setMessages,
+    appendStreamingChunk,
+    clearStreaming,
   };
 }

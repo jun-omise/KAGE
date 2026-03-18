@@ -25,6 +25,7 @@ import ModelSelector from '../ModelSelector';
 import NotificationSettings from '../NotificationSettings';
 import MessagingConfig from '../MessagingConfig';
 import TaskDashboard from '../TaskDashboard';
+import SettingsPage from '../../pages/Settings';
 
 const NAV_ITEMS = [
   { key: 'chat', icon: MessageSquare },
@@ -63,16 +64,17 @@ export default function MainLayout() {
   const [showMonitorOverlay, setShowMonitorOverlay] = useState(false);
 
   const {
-    messages, conversations, isLoading,
+    messages, conversations, isLoading, streamingText,
     sendMessage, loadConversation, loadConversations,
     createConversation, deleteConversation,
+    appendStreamingChunk, clearStreaming,
   } = useChat();
 
   const {
     agentStates, cost: sseCost, approval, isConnected,
     isPaused: sseIsPaused, pipelineProgress, subtaskProgress,
     fileResults, clearApproval, clearFileResults,
-  } = useSSE(selectedConversation);
+  } = useSSE(selectedConversation, { onResponseChunk: appendStreamingChunk });
 
   const { agents, cost, elapsed, toolsUsed, isPaused } = useAgentState(
     agentStates, sseCost, sseIsPaused
@@ -117,21 +119,21 @@ export default function MainLayout() {
 
   const handleApprove = useCallback(async (id, autoApprove) => {
     try {
-      await fetch('/api/approval', {
+      await fetch(`/api/approval/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'approve', autoApprove }),
+        body: JSON.stringify({ autoApprove }),
       });
       clearApproval();
     } catch { /* */ }
   }, [clearApproval]);
 
-  const handleReject = useCallback(async (id) => {
+  const handleReject = useCallback(async (id, reason) => {
     try {
-      await fetch('/api/approval', {
+      await fetch(`/api/approval/${id}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'reject' }),
+        body: JSON.stringify({ reason }),
       });
       clearApproval();
     } catch { /* */ }
@@ -139,10 +141,10 @@ export default function MainLayout() {
 
   const handleModify = useCallback(async (id) => {
     try {
-      await fetch('/api/approval', {
+      await fetch(`/api/approval/${id}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'modify' }),
+        body: JSON.stringify({ reason: 'Modified by user' }),
       });
       clearApproval();
     } catch { /* */ }
@@ -202,7 +204,8 @@ export default function MainLayout() {
           )}
           {mobileTab === 'chat' && (
             <ChatPanel messages={messages} isLoading={isLoading} onSendMessage={handleSendMessage}
-              pipelineProgress={pipelineProgress} subtaskProgress={subtaskProgress} />
+              pipelineProgress={pipelineProgress} subtaskProgress={subtaskProgress} streamingText={streamingText}
+              agentStates={agentStates} />
           )}
           {mobileTab === 'monitor' && (
             <div className="h-full overflow-y-auto">
@@ -239,7 +242,7 @@ export default function MainLayout() {
   return (
     <div className="h-screen flex flex-col bg-kage-bg">
       <header className="flex items-center justify-between px-4 py-2 border-b border-kage-border bg-kage-card flex-shrink-0">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0 flex-1">
           {sidebarCollapsed && (
             <button onClick={() => setSidebarCollapsed(false)}
               className="p-1.5 rounded-lg hover:bg-white/5 text-kage-sub hover:text-kage-text transition-colors">
@@ -250,10 +253,10 @@ export default function MainLayout() {
             <Shield size={22} className="text-kage-primary" />
             <span className="text-lg font-bold text-kage-text tracking-wide">{t('app.name')}</span>
           </div>
-          <nav className="flex items-center gap-1 ml-4">
+          <nav className="flex items-center gap-1 ml-4 overflow-x-auto scrollbar-hide">
             {NAV_ITEMS.map(({ key, icon: Icon }) => (
               <button key={key} onClick={() => setCurrentView(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all flex-shrink-0 whitespace-nowrap ${
                   currentView === key
                     ? 'bg-kage-primary/10 text-kage-primary font-medium'
                     : 'text-kage-sub hover:text-kage-text hover:bg-white/5'
@@ -272,7 +275,7 @@ export default function MainLayout() {
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <ModelSelector compact />
           {isConnected && (
             <span className="flex items-center gap-1.5 text-xs text-kage-success">
@@ -286,7 +289,7 @@ export default function MainLayout() {
               <ChevronLeft size={18} />
             </button>
           )}
-          <button className="p-2 rounded-lg hover:bg-white/5 text-kage-sub hover:text-kage-text transition-colors">
+          <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-lg hover:bg-white/5 transition-colors ${currentView === 'settings' ? 'text-kage-primary' : 'text-kage-sub hover:text-kage-text'}`}>
             <Settings size={18} />
           </button>
         </div>
@@ -301,7 +304,8 @@ export default function MainLayout() {
         <main className="flex-1 overflow-hidden">
           {currentView === 'chat' && (
             <ChatPanel messages={messages} isLoading={isLoading} onSendMessage={handleSendMessage}
-              pipelineProgress={pipelineProgress} subtaskProgress={subtaskProgress} />
+              pipelineProgress={pipelineProgress} subtaskProgress={subtaskProgress} streamingText={streamingText}
+              agentStates={agentStates} />
           )}
           {currentView === 'queue' && <TaskDashboard />}
           {currentView === 'tasks' && <TaskBuilder />}
@@ -309,6 +313,7 @@ export default function MainLayout() {
           {currentView === 'notifications' && <NotificationSettings />}
           {currentView === 'messaging' && <MessagingConfig />}
           {currentView === 'security' && <SecurityPanel />}
+          {currentView === 'settings' && <SettingsPage />}
         </main>
 
         {isDesktop && (

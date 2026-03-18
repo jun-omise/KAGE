@@ -10,6 +10,7 @@ import { detectPII, maskPII } from '../security/pii-detector.js';
 import { LoopDetector } from '../security/loop-detector.js';
 import { CostTracker } from '../security/cost-tracker.js';
 import { AuditLogger } from '../security/audit-logger.js';
+import { checkPermission, recordApprovalSync } from '../security/permission-engine.js';
 import { getDb } from '../db/init.js';
 import notificationService from '../notifications/service.js';
 import { classifyComplexity, getModelForAgent, getRoutingPlan } from './model-router.js';
@@ -17,6 +18,7 @@ import { TokenTracker } from './token-tracker.js';
 import autoResolver from '../mcp/auto-resolver.js';
 import mcpManager from '../mcp/client.js';
 import skillLoader from '../mcp/skill-loader.js';
+import agentMemory from '../memory/store.js';
 
 class AgentOrchestrator {
   constructor() {
@@ -52,7 +54,7 @@ class AgentOrchestrator {
     });
   }
 
-  async processMessage({ conversationId, messageId, message: userMessage, attachments }) {
+  async processMessage({ conversationId, messageId, message: userMessage, attachments, history = [] }) {
     const trace = [];
     const taskId = uuid();
     const startTime = Date.now();
@@ -149,6 +151,12 @@ class AgentOrchestrator {
         console.error('Auto MCP resolve error:', e);
       }
 
+      // Inject memory context
+      let memoryContext = '';
+      try {
+        memoryContext = agentMemory.getContextForPrompt(userMessage);
+      } catch {}
+
       // Step 2: Planner — task decomposition
       const plannerModel = getModelForAgent('planner', complexity, mainModelId);
       this._emitProgress(conversationId, 'planning', 2, totalSteps, 'Creating execution plan...', startTime);
@@ -156,7 +164,8 @@ class AgentOrchestrator {
       sseManager.send(conversationId, 'agent:start', { agent: 'planner', action: 'Analyzing task...', model: plannerModel });
       this._emitAgentDetail(conversationId, 'planner', { currentAction: 'Task analysis & decomposition', inputPreview: userMessage.slice(0, 200), model: plannerModel });
       const availableTools = mcpManager.getRegisteredTools();
-      const plan = await this.agents.planner.createPlan(userMessage, { model: plannerModel, availableTools });
+      const plannerInput = memoryContext ? userMessage + memoryContext : userMessage;
+      const plan = await this.agents.planner.createPlan(plannerInput, { model: plannerModel, availableTools });
       const plannerDuration = Date.now() - plannerStart;
       if (plan.usage) tokenTracker.record('planner', plannerModel, plan.usage);
       trace.push({ agent: 'planner', phase: 'planning', result: plan, duration_ms: plannerDuration, model: plannerModel });
@@ -164,13 +173,80 @@ class AgentOrchestrator {
 
       // Update totalSteps now that we know how many subtasks
       const subtaskCount = plan.subtasks?.length || 1;
-      totalSteps = 3 + subtaskCount + 3; // sentinel_input + planning + sentinel_plan + research + N subtasks + review + response
       this._emitAgentDetail(conversationId, 'planner', {
         currentAction: 'Complete',
-        outputPreview: `Plan: ${subtaskCount} subtask(s) - ${plan.summary || ''}`.slice(0, 200),
+        outputPreview: `Plan: ${plan.type || 'tool_required'} — ${subtaskCount} subtask(s) - ${plan.summary || ''}`.slice(0, 200),
       });
 
       if (this.activeTasks.get(taskId)?.cancelled) return this._cancelledResponse(trace, tokenTracker);
+
+      // === DIRECT ANSWER OPTIMIZATION ===
+      // For simple questions/conversations, skip Executor/Reviewer entirely
+      if (plan.type === 'direct_answer') {
+        totalSteps = 3; // sentinel_input + planning + response
+        this._emitProgress(conversationId, 'response', 3, totalSteps, 'Generating response...', startTime);
+
+        const { response: directResponse, usage: directUsage } = await this.agents.planner.generateDirectAnswer(
+          userMessage, { model: plannerModel, history }
+        );
+        if (directUsage) tokenTracker.record('planner', plannerModel, directUsage);
+        trace.push({ agent: 'planner', phase: 'direct_answer', duration_ms: Date.now() - startTime, model: plannerModel });
+
+        // Stream chunks if available
+        if (conversationId && directResponse) {
+          sseManager.send(conversationId, 'response:chunk', { chunk: directResponse });
+        }
+
+        const sessionTotal = tokenTracker.getSessionTotal();
+        const totalCost = sessionTotal.totalCost;
+        const totalTime = Date.now() - startTime;
+
+        this.costTracker.recordCost(totalCost, { conversationId, taskId, agents: ['sentinel', 'planner'] });
+        this.auditLogger.log('agent_action', {
+          conversationId, taskId, action: 'completed_direct',
+          total_cost: totalCost, total_time_ms: totalTime,
+          agents_used: ['sentinel', 'planner'], complexity,
+          token_breakdown: sessionTotal.breakdown,
+        });
+
+        sseManager.send(conversationId, 'response:done', {
+          total_cost: `$${totalCost.toFixed(4)}`,
+          total_time_ms: totalTime,
+          complexity,
+          optimized: true,
+          token_usage: { input: sessionTotal.totalInputTokens, output: sessionTotal.totalOutputTokens },
+        });
+
+        // Extract memories from direct conversation
+        try {
+          const msgs = [
+            { role: 'user', content: userMessage },
+            { role: 'assistant', content: directResponse },
+          ];
+          agentMemory.extractFromConversation(msgs).catch(() => {});
+        } catch { /* non-blocking */ }
+
+        this.activeTasks.delete(taskId);
+        this.loopDetector.cleanup(taskId);
+
+        notificationService.notify('task_complete', {
+          taskId, conversationId,
+          cost: `$${totalCost.toFixed(4)}`,
+          elapsed: `${Math.round(totalTime / 1000)}s`,
+        }).catch(() => {});
+
+        return {
+          response: directResponse,
+          trace,
+          cost: totalCost,
+          tools_used: [],
+          complexity,
+          token_usage: sessionTotal,
+        };
+      }
+
+      // === FULL PIPELINE (tool_required / multi_step) ===
+      totalSteps = 3 + subtaskCount + 3; // sentinel_input + planning + sentinel_plan + research + N subtasks + review + response
 
       // Auto MCP: resolve servers from plan's required tools
       try {
@@ -209,30 +285,68 @@ class AgentOrchestrator {
         };
       }
 
+      console.log("[Orchestrator] Step 4: requires_approval =", planCheck.requires_approval, "permission_checks =", planCheck.permission_checks);
       // Step 4: Check if approval needed
       if (planCheck.requires_approval) {
         const approvalId = uuid();
+        // Determine risk level from permission checks
+        const riskLevel = planCheck.permission_checks?.some(w => w.includes('delete') || w.includes('shell'))
+          ? 'high'
+          : planCheck.permission_checks?.length > 0 ? 'medium' : 'low';
+
+        // Extract first tool requiring approval for display
+        const firstApprovalTool = (plan.subtasks || []).flatMap(s => s.tools || []).find(t => {
+          const pc = checkPermission(t);
+          return pc.requiresApproval;
+        });
+
+        console.log("[Orchestrator] Setting pending approval:", approvalId);
         this.pendingApprovals.set(approvalId, {
           plan,
+          tool: firstApprovalTool || null,
           reason: planCheck.approval_reason,
+          description: planCheck.approval_reason || `Plan requires approval: ${plan.summary || ''}`,
           estimated_cost: plan.total_estimated_cost,
+          riskLevel,
           conversationId,
           taskId,
+          argsPreview: plan.subtasks?.map(s => s.description).join('\n'),
         });
+
+        // Persist to DB
+        try {
+          const db = getDb();
+          db.prepare(
+            "INSERT INTO approval_queue (id, conversation_id, action_type, action_details, status) VALUES (?, ?, ?, ?, 'pending')"
+          ).run(approvalId, conversationId, 'plan_approval', JSON.stringify({
+            plan_summary: plan.summary,
+            tool: firstApprovalTool,
+            reason: planCheck.approval_reason,
+          }));
+        } catch {}
+
         sseManager.send(conversationId, 'approval:required', {
           id: approvalId,
           plan,
+          tool: firstApprovalTool,
           reason: planCheck.approval_reason,
+          description: planCheck.approval_reason,
           estimated_cost: plan.total_estimated_cost,
+          riskLevel,
+          permissions: planCheck.permission_checks || [],
+          argsPreview: plan.subtasks?.map(s => s.description).join('\n'),
         });
         this.auditLogger.log('approved', {
           conversationId,
           approvalId,
           status: 'pending',
           plan_summary: plan.summary,
+          riskLevel,
         });
         // Wait for approval (with timeout)
+        console.log("[Orchestrator] Waiting for approval:", approvalId, "pendingApprovals size:", this.pendingApprovals.size);
         const approved = await this.waitForApproval(approvalId, 300000);
+        console.log("[Orchestrator] Approval result:", approved);
         if (!approved) {
           this.auditLogger.log('approved', { conversationId, approvalId, status: 'rejected_or_timeout' });
           return { response: 'Operation cancelled or timed out.', trace, cost: 0 };
@@ -269,6 +383,13 @@ class AgentOrchestrator {
       const results = [];
       const fileResults = [];
       const subtasks = plan.subtasks || [{ id: 1, description: userMessage }];
+      // Inject original user message into subtasks for content-generation tools
+      // This ensures the executor knows the user's actual topic (not KAGE defaults)
+      for (const st of subtasks) {
+        if (st.tools?.some(t => ['create_presentation', 'write_excel', 'generate_html', 'generate_svg'].includes(t))) {
+          st.userRequest = userMessage;
+        }
+      }
       const subtaskStartTimes = [];
       for (let i = 0; i < subtasks.length; i++) {
         const subtask = subtasks[i];
@@ -304,10 +425,28 @@ class AgentOrchestrator {
         // Inject skill instructions into executor context
         const skillInstructions = skillLoader.buildPromptInstructions();
         const result = await this.agents.executor.execute(subtask, results, { model: executorModel, qualityResearch, skillInstructions });
-        const execDuration = Date.now() - execStart;
+                const execDuration = Date.now() - execStart;
         if (result.usage) tokenTracker.record('executor', executorModel, result.usage);
         results.push(result);
         trace.push({ agent: 'executor', phase: 'execution', subtask: subtask.id, result, duration_ms: execDuration, model: executorModel });
+
+        // Emit tool call/result SSE events for real-time Agent Monitor display
+        if (result.toolUsed) {
+          sseManager.send(conversationId, 'agent:tool_call', {
+            agent: 'executor',
+            tool: result.toolUsed,
+            args: result.details?.arguments || {},
+            subtaskId: subtask.id,
+          });
+          sseManager.send(conversationId, 'agent:tool_result', {
+            agent: 'executor',
+            tool: result.toolUsed,
+            success: result.success,
+            result: (result.result || result.error || '').toString().slice(0, 500),
+            duration_ms: execDuration,
+            subtaskId: subtask.id,
+          });
+        }
 
         // Detect file operations for result presentation
         if (result.toolUsed && result.details?.tool) {
@@ -353,7 +492,7 @@ class AgentOrchestrator {
 
         // Mid-execution loop check — instead of hard stop, break loop and continue to review/response
         const midLoopCheck = this.loopDetector.checkLimits(taskId, securityConfig);
-        if (midLoopCheck.exceeded) {
+                if (midLoopCheck.exceeded) {
           this.auditLogger.log('alert', { conversationId, type: 'loop_mid_execution', reason: midLoopCheck.reason });
           sseManager.send(conversationId, 'agent:warning', {
             agent: 'system',
@@ -377,10 +516,10 @@ class AgentOrchestrator {
       sseManager.send(conversationId, 'agent:complete', { agent: 'reviewer', result: 'success', duration_ms: reviewerDuration });
       this._emitAgentDetail(conversationId, 'reviewer', { currentAction: 'Complete', outputPreview: JSON.stringify(review).slice(0, 200) });
 
-      // Step 7: Generate final response
+      // Step 7: Generate final response (streamed via SSE)
       const finalResponseModel = getModelForAgent('final_response', complexity, mainModelId);
       this._emitProgress(conversationId, 'response', totalSteps, totalSteps, 'Generating response...', startTime);
-      const { response: finalResponse, usage: finalUsage } = await this.generateFinalResponse(userMessage, plan, results, review, finalResponseModel);
+      const { response: finalResponse, usage: finalUsage } = await this.generateFinalResponse(userMessage, plan, results, review, finalResponseModel, conversationId, history);
       if (finalUsage) tokenTracker.record('final_response', finalResponseModel, finalUsage);
 
       // Get real cost from token tracker
@@ -414,6 +553,15 @@ class AgentOrchestrator {
         complexity,
         token_breakdown: sessionTotal.breakdown,
       });
+
+      // --- Extract memories from conversation ---
+      try {
+        const conversationMessages = [
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: safeResponse },
+        ];
+        agentMemory.extractFromConversation(conversationMessages).catch(() => {});
+      } catch { /* non-blocking */ }
 
       // Emit file results
       for (const fr of fileResults) {
@@ -466,11 +614,15 @@ class AgentOrchestrator {
     return { response: 'Task cancelled.', trace, cost: sessionTotal.totalCost };
   }
 
-  async generateFinalResponse(userMessage, plan, results, review, model) {
-    const messages = [
-      {
-        role: 'user',
-        content: `Original request: ${userMessage}
+  async generateFinalResponse(userMessage, plan, results, review, model, conversationId, history = []) {
+    // Build messages with conversation history for context
+    const messages = [];
+    for (const h of history.slice(-10)) {
+      messages.push({ role: h.role, content: h.content });
+    }
+    messages.push({
+      role: 'user',
+      content: `Original request: ${userMessage}
 
 Plan: ${JSON.stringify(plan)}
 Execution results: ${JSON.stringify(results)}
@@ -478,30 +630,45 @@ Review: ${JSON.stringify(review)}
 
 Based on the above, generate a natural, helpful response to the user's original request.
 Respond in the same language as the user's message.`,
-      },
-    ];
-
-    const response = await this.ai.chat(messages, {
-      systemPrompt: `You are KAGE, a highly capable AI assistant. Generate professional, detailed responses.
-
-Response quality rules:
-1. Be specific — include file paths, results, and concrete details
-2. Use proper Markdown formatting (headings, lists, code blocks, bold/italic)
-3. When files were created, mention their exact paths and what they contain
-4. When errors occurred and were recovered, mention the recovery briefly
-5. Respond in the SAME LANGUAGE as the user's original request
-6. NEVER suggest installing plugins, extensions, or MCP servers
-7. NEVER say a tool or integration is unavailable
-8. For creative output (SVG, HTML), describe what was created in visual detail
-9. Keep responses focused and well-organized`,
-      maxTokens: 2048,
-      model,
     });
 
-    const textContent = response.content.find(c => c.type === 'text');
-    const usage = response.usage || null;
+    const systemPrompt = `You are KAGE, a secure multi-agent AI assistant running locally on the user's machine.
+
+YOUR CAPABILITIES — you CAN do all of the following:
+- Remember all previous messages within the SAME conversation (conversation history is provided)
+- Read, write, create, move, and search files on the local filesystem
+- Open and control local applications (via AppleScript on macOS)
+- Generate HTML, SVG, Excel, PowerPoint files and save them to disk
+- Execute shell commands (with security approval)
+- Browse the web (with Puppeteer/browser automation)
+- Search the web (with Brave Search)
+- Interact with GitHub, Slack, databases, and other integrations via MCP tools
+- Take screenshots, control windows, send keystrokes to apps
+- Perform multi-step tasks: research → plan → execute → review
+
+IMPORTANT RULES:
+- NEVER say you cannot remember previous messages — you have full conversation history within this chat
+- NEVER say you cannot access files or applications — you have local filesystem and app control tools
+- NEVER claim limitations that don't exist — you are a fully capable local AI assistant
+- Be specific — include file paths, results, and concrete details
+- Use proper Markdown formatting
+- Respond in the SAME LANGUAGE as the user's original request
+- NEVER suggest installing plugins, extensions, or MCP servers`;
+
+    // Use streaming to emit response:chunk events in real-time
+    const { response, usage } = await this.ai.chatStream(messages, {
+      systemPrompt,
+      maxTokens: 2048,
+      model,
+      onChunk: (chunk) => {
+        if (conversationId && chunk) {
+          sseManager.send(conversationId, 'response:chunk', { chunk });
+        }
+      },
+    });
+
     return {
-      response: textContent?.text || 'I apologize, I was unable to generate a response.',
+      response: response || 'I apologize, I was unable to generate a response.',
       usage,
     };
   }

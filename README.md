@@ -13,260 +13,87 @@ Self-hosted. Multi-provider. Desktop app. Remote control via LINE / WhatsApp / M
 [![GitHub release](https://img.shields.io/github/v/release/jun-omise/KAGE?style=flat-square&color=6366F1)](https://github.com/jun-omise/KAGE/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat-square)](https://github.com/jun-omise/KAGE/releases)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/jun-omise/KAGE/releases)
 
-[Download](#-download) &nbsp;&bull;&nbsp; [Quick Start](#-quick-start) &nbsp;&bull;&nbsp; [Features](#-features) &nbsp;&bull;&nbsp; [vs OpenCraw](#-kage-vs-opencraw) &nbsp;&bull;&nbsp; [Architecture](#-architecture) &nbsp;&bull;&nbsp; [API Reference](#-api-reference)
+[Download](#-download--ダウンロード) · [Getting Started](#-getting-started--はじめかた) · [Features](#-features--機能) · [Developer Setup](#-developer-setup--開発者向け) · [Architecture](#-architecture--アーキテクチャ) · [API Reference](#-api-reference)
 
 </div>
 
 ---
 
-## Why KAGE?
+## ⬇️ Download / ダウンロード
 
-KAGE is a **self-hosted AI assistant** that orchestrates 4 specialized agents to handle complex tasks securely on your local machine. Unlike single-model chatbots, KAGE's multi-agent pipeline ensures every task is security-checked, planned, executed, and reviewed before delivering results.
+> **No terminal required** — download, install, start chatting.
+>
+> **ターミナル不要** — ダウンロードしてすぐ使えます。
+
+| Platform | Download | Size |
+|----------|----------|------|
+| **🍎 macOS** | [**KAGE-macOS.dmg**](https://github.com/jun-omise/KAGE/releases/latest/download/KAGE-macOS.dmg) | ~120 MB |
+| **🪟 Windows** | [**KAGE-Windows-Setup.exe**](https://github.com/jun-omise/KAGE/releases/latest/download/KAGE-Windows-Setup.exe) | ~90 MB |
+
+> 💡 Alternatively, visit the [**Releases page**](https://github.com/jun-omise/KAGE/releases/latest) to see all versions.
+
+---
+
+## 🚀 Getting Started / はじめかた
+
+### Step 1 — Install / インストール
+
+**macOS**: Open the `.dmg` → drag **KAGE** to your Applications folder → double-click to launch.
+
+**Windows**: Run the `.exe` installer → follow the prompts → KAGE launches automatically.
+
+### Step 2 — Enter your API Key / APIキーを入力
+
+On first launch, the **Setup Wizard** appears. Paste your AI provider API key:
+
+| Provider | Get your key |
+|----------|-------------|
+| Anthropic (recommended) | [console.anthropic.com](https://console.anthropic.com/) |
+| OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) |
+| Google AI | [aistudio.google.com](https://aistudio.google.com/apikey) |
+
+Set a password for KAGE, then click **Complete Setup**.
+
+### Step 3 — Start Chatting / チャット開始 🎉
+
+That's it! Type a message and KAGE's 4-agent pipeline handles the rest:
 
 ```
 You: "Organize my project files and create a summary report"
 
-  Sentinel  ─── security check & PII scan
-      ↓
-  Planner   ─── break into subtasks
-      ↓
-  Executor  ─── run tools (filesystem, search, code...)
-      ↓
-  Reviewer  ─── verify results & quality
-      ↓
-  Result    ─── files created + summary delivered
+  Sentinel  → security check
+  Planner   → break into subtasks
+  Executor  → run tools (filesystem, search, code...)
+  Reviewer  → verify results & quality
+  ✅ Done    → files organized + summary delivered
 ```
-
-**No cloud dependency. Your data stays on your machine. No terminal needed.**
 
 ---
 
-## KAGE vs OpenCraw
+## ✨ Features / 機能
 
-KAGE is designed from the ground up for **security, accessibility, and cost efficiency** — areas where existing open-source agents fall short.
+### 🔒 Security-First Architecture
 
-| Feature | **KAGE** | **OpenCraw** |
-|---------|----------|-------------|
-| **Security Architecture** | 4-layer security (Sentinel agent, PII detection, loop detection, cost limits) | Basic sandboxing |
-| **PII Auto-Masking** | Automatic detection & masking of SSN, credit cards, etc. | Not built-in |
-| **Cost Control** | Per-task / daily / monthly limits with real-time tracking | No cost limits |
-| **Audit Logging** | Full action history with security events | Minimal logging |
-| **Emergency Stop** | Kill all agents instantly with one click | Not available |
-| **User Interface** | Full web UI — anyone can use it, no terminal needed | CLI-focused, developer-only |
-| **Desktop App** | Native macOS (.dmg) & Windows (.exe) installer | Terminal only |
-| **Multi-Provider** | 8 AI providers, 35+ models, smart cost routing | Single provider |
-| **Cost Optimization** | Auto-routes cheap models for simple agents (up to 90% savings) | Same model for everything |
-| **MCP Auto-Install** | Detects needed tools from your message, auto-connects | Manual configuration |
-| **Remote Control** | Control from LINE / WhatsApp / Messenger while away | Not available |
-| **Task Templates** | Save & reuse chat instructions with variables | Not available |
-| **Real-time Monitoring** | Agent Monitor with Cards / Timeline views, live progress | Basic status |
-| **Bilingual** | English + Japanese | English only |
-| **Self-Hosted** | 100% local, your data never leaves your machine | Requires cloud services |
-
-### Security is Everything
-
-KAGE's **Sentinel agent** runs before and after every task, performing:
+KAGE's **Sentinel agent** runs before and after every task:
 
 - **Input validation** — blocks dangerous commands before execution
 - **PII detection** — auto-masks credit card numbers, SSNs, phone numbers
 - **Plan review** — validates execution plans for safety
-- **Output sanitization** — ensures no sensitive data leaks in responses
+- **Output sanitization** — ensures no sensitive data leaks
 - **Loop detection** — prevents infinite agent loops
-- **Cost enforcement** — hard limits prevent runaway API costs
+- **Cost enforcement** — hard limits on per-task / daily / monthly API costs
 
-This is not an afterthought — it's the core architecture. Every single request passes through security checks twice (before planning and after planning), and outputs are sanitized before delivery.
+### 🤖 MCP Auto-Discovery (50+ Tools)
 
-### Anyone Can Use It
-
-No terminal. No Docker. No technical setup.
-
-1. **Download** the desktop app (.dmg for Mac, .exe for Windows)
-2. **Double-click** to launch
-3. **Enter your API key** in the Setup Wizard
-4. **Start chatting** — KAGE handles everything else
-
-The GUI makes KAGE accessible to non-developers: designers, managers, researchers — anyone who wants AI task automation without touching a command line.
-
----
-
-## Download
-
-### Option 1: Desktop App (Recommended)
-
-> **No terminal required** — download, install, double-click.
-
-| Platform | Download |
-|----------|----------|
-| **macOS** | [Download .dmg](https://github.com/jun-omise/KAGE/releases/latest) |
-| **Windows** | [Download .exe](https://github.com/jun-omise/KAGE/releases/latest) |
-
-### Option 2: Clone & Run (Developers)
-
-```bash
-git clone https://github.com/jun-omise/KAGE.git
-cd KAGE
-npm install
-cp .env.example .env
-npm run dev
-```
-
-### Option 3: Download ZIP
-
-> [**Download Latest (ZIP)**](https://github.com/jun-omise/KAGE/archive/refs/heads/main.zip)
-
----
-
-## Quick Start
-
-### Prerequisites
-
-| Requirement | Version |
-|------------|---------|
-| **Node.js** | 18+ |
-| **npm** | 9+ |
-| **API Key** | Anthropic, OpenAI, Google, or any supported provider |
-
-### 3-Step Setup
-
-```bash
-# 1. Install
-git clone https://github.com/jun-omise/KAGE.git && cd KAGE && npm install
-
-# 2. Configure
-cp .env.example .env
-```
-
-Edit `.env`:
-```env
-ANTHROPIC_API_KEY=sk-ant-...your-key...
-JWT_SECRET=any-random-string-here
-PORT=3456
-```
-
-```bash
-# 3. Launch
-npm run dev
-```
-
-Open **http://localhost:5173** — the Setup Wizard will guide you.
-
----
-
-## Features
-
-### MCP Auto-Discovery & Auto-Install
-
-KAGE automatically detects which tools are needed from your message and connects them — no manual setup required.
+KAGE automatically detects which tools are needed from your message and connects them:
 
 ```
-You: "Organize the files on my Desktop"
-
-  KAGE auto-detects: filesystem needed
-  → Auto-connects @modelcontextprotocol/server-filesystem
-  → Executes task using file tools
-  → Returns results
-```
-
-```
-You: "Search GitHub for React component libraries and summarize the top 5"
-
-  KAGE auto-detects: github + brave_search needed
-  → Auto-connects both servers
+You: "Search GitHub for React component libraries"
+  → Auto-connects github + brave_search servers
   → Searches, analyzes, summarizes
-  → Returns formatted comparison
 ```
-
-50+ MCP servers available out of the box. KAGE matches keywords in your message (Japanese + English) to the right tools and connects them automatically.
-
-### Smart Cost Optimization
-
-KAGE automatically routes each agent to the cheapest suitable model:
-
-| Agent | Role | Model Tier | Why |
-|-------|------|-----------|-----|
-| **Sentinel** | Security check | Fast (cheapest) | Simple validation, no reasoning needed |
-| **Planner** | Task planning | Scales with complexity | Simple → Fast, Complex → Flagship |
-| **Executor** | Tool execution | Your chosen model | Needs full capability |
-| **Reviewer** | Quality check | Fast (cheapest) | Simple verification |
-
-**Result**: Up to 90% cost reduction compared to using the same expensive model for everything.
-
-Real token tracking with per-agent cost breakdown — no more estimated costs.
-
-### Remote Control via Messaging
-
-Run KAGE on your PC at home, control it from anywhere via your phone:
-
-```
-You (WhatsApp): authenticate my-passphrase
-KAGE: ✅ Authenticated.
-
-You (WhatsApp): check my project build status
-KAGE: [Sentinel → Planner → Executor → Reviewer]
-KAGE: Build passed. 142 tests green. Deploy ready.
-
-You (LINE): organize downloads folder by file type
-KAGE: Done. Moved 47 files into Images/, Documents/, Videos/.
-```
-
-| Feature | Detail |
-|---------|--------|
-| **Platforms** | LINE, WhatsApp, Facebook Messenger |
-| **Auth** | Passphrase-based per session |
-| **Security** | HMAC-SHA256 signature verification |
-| **Rate Limit** | 30 requests/hour per user |
-| **Full Pipeline** | Same 4-agent pipeline as web UI |
-
-### Task Templates
-
-Save frequently-used instructions as reusable templates with variables:
-
-```
-Template: "{{folder}}内のファイルを{{format}}形式で整理して"
-Variables: folder = ~/Desktop, format = 日付別
-
-→ Executes: "~/Desktop内のファイルを日付別形式で整理して"
-```
-
-- Save any chat message as a template
-- Add `{{variable}}` placeholders
-- Configure labels & default values
-- One-click execution from task list
-
-### Multi-Agent Pipeline
-
-<table>
-<tr>
-<td width="50%">
-
-**4 specialized agents** work in sequence:
-
-| Agent | Role |
-|-------|------|
-| **Sentinel** | Security check, PII detection, risk assessment |
-| **Planner** | Task decomposition & strategy |
-| **Executor** | Tool calls, file operations, API requests |
-| **Reviewer** | Quality verification & response generation |
-
-</td>
-<td width="50%">
-
-**Real-time visibility** into every step:
-
-- Segmented progress bar (Step 2/7: Executing...)
-- Agent Monitor with Cards & Timeline views
-- Live tool call previews
-- Elapsed time & real cost tracking
-- Model routing info per agent
-- Pause / Resume / Stop controls
-
-</td>
-</tr>
-</table>
-
-### 50+ MCP Tool Integrations
 
 | Category | Examples |
 |----------|---------|
@@ -275,11 +102,22 @@ Variables: folder = ~/Desktop, format = 日付別
 | **Data** | PostgreSQL, MySQL, MongoDB, Redis |
 | **Search** | Brave Search, Google Search |
 | **Cloud** | AWS, GCP, Azure, Vercel |
-| **AI** | Hugging Face, Replicate |
 | **Communication** | Gmail, Discord, Telegram |
-| **Design** | Figma |
 
-### Multi-Provider AI (8 Providers, 35+ Models)
+### 💰 Smart Cost Optimization
+
+Automatically routes each agent to the cheapest suitable model — up to **90% cost reduction**:
+
+| Agent | Role | Model Tier |
+|-------|------|-----------|
+| Sentinel | Security check | Fast (cheapest) |
+| Planner | Task planning | Scales with complexity |
+| Executor | Tool execution | Your chosen model |
+| Reviewer | Quality check | Fast (cheapest) |
+
+Real token tracking with per-agent cost breakdown. No more estimated costs.
+
+### 🧠 Multi-Provider AI (8 Providers, 35+ Models)
 
 | Provider | Models |
 |----------|--------|
@@ -292,9 +130,50 @@ Variables: folder = ~/Desktop, format = 日付別
 | **Moonshot** | Kimi K2 |
 | **OpenRouter** | 100+ models |
 
+### 📱 Remote Control via Messaging
+
+Run KAGE on your PC at home, control it from your phone:
+
+```
+You (LINE): authenticate my-passphrase
+KAGE: ✅ Authenticated.
+
+You (WhatsApp): check my project build status
+KAGE: Build passed. 142 tests green. Deploy ready.
+```
+
+Supported: **LINE**, **WhatsApp**, **Facebook Messenger** — same full 4-agent pipeline.
+
+### 📋 Task Templates
+
+Save frequently-used instructions as reusable templates with `{{variables}}`:
+
+```
+Template: "{{folder}}内のファイルを{{format}}形式で整理して"
+→ Fill in: folder=~/Desktop, format=日付別
+→ One-click execution
+```
+
+### 🌐 Bilingual (English + 日本語)
+
+Full UI and agent responses in both English and Japanese.
+
 ---
 
-## Architecture
+## 🔄 Auto-Update / 自動アップデート
+
+KAGE checks for updates automatically on launch. When a new version is available:
+
+1. A dialog asks: **"v{x.y.z} is available. Download?"**
+2. The update downloads in the background
+3. When ready: **"Restart to install?"**
+4. KAGE restarts and you're on the latest version
+
+No manual re-download needed. Updates are delivered through GitHub Releases.
+
+---
+
+## 🏗️ Architecture / アーキテクチャ
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -329,7 +208,7 @@ Variables: folder = ~/Desktop, format = 日付別
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| **Desktop** | Electron | Native macOS / Windows app |
+| **Desktop** | Electron + electron-updater | Native macOS / Windows app with auto-update |
 | **Frontend** | React 18 + Vite + Tailwind CSS | Fast, responsive dark UI |
 | **Backend** | Node.js + Express | API server & orchestration |
 | **Database** | SQLite (better-sqlite3) | Zero-config persistent storage |
@@ -341,12 +220,79 @@ Variables: folder = ~/Desktop, format = 日付別
 
 ---
 
-## Project Structure
+## 👩‍💻 Developer Setup / 開発者向け
+
+<details>
+<summary><strong>Click to expand / クリックして展開</strong></summary>
+
+### Prerequisites
+
+| Requirement | Version |
+|------------|---------|
+| **Node.js** | 18+ |
+| **npm** | 9+ |
+| **API Key** | Anthropic, OpenAI, Google, or any supported provider |
+
+### Installation
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/jun-omise/KAGE.git
+cd KAGE
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure environment
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...your-key...
+JWT_SECRET=any-random-string-here
+PORT=3456
+```
+
+```bash
+# 4. Start development server
+npm run dev
+```
+
+Open **http://localhost:5173** — the Setup Wizard will guide you through the rest.
+
+### Commands
+
+```bash
+# Development
+npm run dev              # Start client + server (recommended)
+npm run server           # Express server only (port 3456)
+npm run client           # Vite dev server only (port 5173)
+npm run build            # Production build (client)
+
+# Desktop App Build
+npm run electron:dev         # Run Electron in dev mode
+npm run electron:build:mac   # Build macOS .dmg
+npm run electron:build:win   # Build Windows .exe
+```
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes* | — | Anthropic API key |
+| `JWT_SECRET` | Yes | — | Secret for JWT signing |
+| `PORT` | No | `3456` | Server port |
+
+*At least one AI provider key is required. Additional keys can be configured through the Settings UI.
+
+### Project Structure
 
 ```
 KAGE/
 ├── electron/                      # Desktop app (Electron)
-│   ├── main.js                    # Main process
+│   ├── main.js                    # Main process + auto-updater
 │   ├── preload.js                 # Preload script
 │   └── builder.config.js          # Build config (dmg/exe)
 │
@@ -357,8 +303,6 @@ KAGE/
 │       │   ├── AgentMonitor.jsx   # Agent status (Cards / Timeline)
 │       │   ├── ProgressIndicator.jsx  # Pipeline progress bar
 │       │   ├── TemplateEditor.jsx     # Template variable editor
-│       │   ├── TemplateRunner.jsx     # Template execution
-│       │   ├── SaveAsTemplateDialog.jsx # Save message as template
 │       │   ├── ToolManager.jsx    # 50+ MCP server catalog
 │       │   └── ...
 │       ├── hooks/
@@ -377,21 +321,42 @@ KAGE/
 │   ├── mcp/
 │   │   ├── client.js              # MCP connection manager
 │   │   ├── auto-resolver.js       # Auto-detect & auto-connect MCP
-│   │   ├── tool-server-map.js     # Tool → Server ID mapping
-│   │   ├── suggestion-engine.js   # Keyword → MCP server matching
 │   │   └── builtin-servers.js     # 50+ server definitions
 │   ├── security/                  # PII, cost, audit, loop detection
 │   ├── notifications/             # Webhook, LINE, WhatsApp, Messenger
-│   └── routes/                    # 13+ API route modules
+│   └── routes/                    # API route modules
 │
 ├── .env.example
 ├── package.json
 └── README.md
 ```
 
+### Releasing a New Version
+
+KAGE uses GitHub Actions for automated builds. To release:
+
+```bash
+# 1. Bump version in package.json
+npm version patch   # or minor / major
+
+# 2. Push the tag
+git push origin main --tags
+```
+
+GitHub Actions will automatically:
+- Build macOS `.dmg` and Windows `.exe`
+- Create a GitHub Release
+- Upload installers as release assets
+- Generate `latest-mac.yml` / `latest.yml` for auto-updater
+
+</details>
+
 ---
 
-## API Reference
+## 📡 API Reference
+
+<details>
+<summary><strong>Click to expand / クリックして展開</strong></summary>
 
 ### Core
 
@@ -436,62 +401,26 @@ KAGE/
 | `agent:detail` | `{ agent, currentAction, model, toolName }` |
 | `mcp:auto_connecting` | `{ serverId, serverName }` |
 | `mcp:auto_connected` | `{ serverId, tools[] }` |
-| `result:file` | `{ action, path }` |
+
+</details>
 
 ---
 
-## Commands
-
-```bash
-# Development
-npm run dev              # Start client + server
-npm run server           # Express server only (port 3456)
-npm run client           # Vite dev server only (port 5173)
-npm run build            # Production build
-
-# Desktop App
-npm run electron:dev     # Run Electron in dev mode
-npm run electron:build:mac   # Build macOS .dmg
-npm run electron:build:win   # Build Windows .exe
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes* | — | Anthropic API key |
-| `JWT_SECRET` | Yes | — | Secret for JWT signing |
-| `PORT` | No | `3456` | Server port |
-
-*At least one AI provider key is required. Additional keys can be set through the Settings UI.
-
-### Security Levels
-
-| Level | Behavior |
-|-------|----------|
-| **Strict** | All actions require approval |
-| **Balanced** | Read = auto, Write/Delete = confirm |
-| **Relaxed** | Most actions auto-approved |
-
----
-
-## Troubleshooting
+## ❓ Troubleshooting / トラブルシューティング
 
 | Issue | Solution |
 |-------|---------|
-| `npm install` fails | `xcode-select --install` (macOS) or install build tools |
-| Port 3456 in use | Change `PORT` in `.env` |
-| "API key not set" | Add key to `.env` or Settings UI |
+| macOS: "App is damaged" / 開けません | Run: `xattr -cr /Applications/KAGE.app` |
+| Windows: SmartScreen warning | Click **More info** → **Run anyway** |
+| Port 3456 in use | Change `PORT` in `.env` or Settings UI |
+| "API key not set" | Add key in the Setup Wizard or Settings page |
 | MCP server won't connect | Check: `npx -y @modelcontextprotocol/server-filesystem /tmp` |
-| Electron build fails | Run `npm run build` first, then `npm run electron:build:mac` |
+| `npm install` fails (dev) | macOS: `xcode-select --install` / Windows: install Build Tools |
+| Electron build fails (dev) | Run `npm run build` first, then `npm run electron:build:mac` |
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -500,9 +429,9 @@ npm run electron:build:win   # Build Windows .exe
 
 ---
 
-## License
+## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
@@ -510,6 +439,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 **Built with [Anthropic Claude](https://anthropic.com) + [MCP](https://modelcontextprotocol.io)**
 
-[Report Bug](https://github.com/jun-omise/KAGE/issues) &nbsp;&bull;&nbsp; [Request Feature](https://github.com/jun-omise/KAGE/issues) &nbsp;&bull;&nbsp; [Discussions](https://github.com/jun-omise/KAGE/discussions)
+[Report Bug](https://github.com/jun-omise/KAGE/issues) · [Request Feature](https://github.com/jun-omise/KAGE/issues) · [Discussions](https://github.com/jun-omise/KAGE/discussions)
 
 </div>

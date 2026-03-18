@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { ChevronDown, ChevronRight, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useI18n } from '../i18n/index.jsx';
 import JsonViewer from './JsonViewer';
 
@@ -35,6 +35,18 @@ export default function AgentCard({ name, status, logs, progress, detail }) {
   // Find the last tool call log for expanded view
   const toolCallLogs = logs?.filter(l => l.type === 'tool_call') || [];
   const toolResultLogs = logs?.filter(l => l.type === 'tool_result') || [];
+
+  // Pair tool calls with their results for rich display
+  const toolPairs = useMemo(() => {
+    const pairs = [];
+    const resultsByTool = [...toolResultLogs];
+    for (const tc of toolCallLogs) {
+      const matchIdx = resultsByTool.findIndex(r => r.tool === tc.tool || r.subtaskId === tc.subtaskId);
+      const result = matchIdx >= 0 ? resultsByTool.splice(matchIdx, 1)[0] : null;
+      pairs.push({ call: tc, result });
+    }
+    return pairs;
+  }, [toolCallLogs, toolResultLogs]);
 
   return (
     <div
@@ -89,15 +101,37 @@ export default function AgentCard({ name, status, logs, progress, detail }) {
         <div className={`mt-1 space-y-0.5 ${expanded ? '' : 'max-h-24 overflow-y-auto'}`}>
           {(expanded ? logs : logs.slice(-5)).map((log, i) => (
             <div key={i} className="text-xs text-kage-sub flex items-start gap-1.5">
-              <span className="text-kage-sub/50 flex-shrink-0">
-                {log.type === 'tool_call' ? '\u25B6' : log.type === 'thinking' ? '\u25CB' : log.type === 'complete' ? '\u2713' : log.type === 'warning' ? '\u26A0' : '\u2022'}
+              <span className="flex-shrink-0">
+                {log.type === 'tool_call' ? (
+                  <span className="text-kage-primary/70">▶</span>
+                ) : log.type === 'tool_result' ? (
+                  log.success === false
+                    ? <XCircle size={11} className="text-red-400 mt-0.5" />
+                    : <CheckCircle size={11} className="text-green-400 mt-0.5" />
+                ) : log.type === 'thinking' ? (
+                  <span className="text-kage-sub/50">○</span>
+                ) : log.type === 'complete' ? (
+                  <span className="text-green-400">✓</span>
+                ) : log.type === 'warning' ? (
+                  <span className="text-yellow-400">⚠</span>
+                ) : (
+                  <span className="text-kage-sub/50">•</span>
+                )}
               </span>
-              <span className="truncate">
+              <span className="truncate flex-1">
                 {log.type === 'tool_call'
                   ? `${log.tool}(${log.args ? JSON.stringify(log.args).slice(0, 60) : ''})`
-                  : log.message || log.result || ''
+                  : log.type === 'tool_result'
+                    ? (log.result || (log.success === false ? 'Failed' : 'Done'))
+                    : log.message || log.result || ''
                 }
               </span>
+              {log.type === 'tool_result' && log.duration_ms != null && (
+                <span className="flex items-center gap-0.5 text-kage-sub/60 flex-shrink-0 ml-1">
+                  <Clock size={10} />
+                  {log.duration_ms < 1000 ? `${log.duration_ms}ms` : `${(log.duration_ms / 1000).toFixed(1)}s`}
+                </span>
+              )}
             </div>
           ))}
           <div ref={logsEndRef} />
@@ -115,16 +149,46 @@ export default function AgentCard({ name, status, logs, progress, detail }) {
         </button>
       )}
 
-      {/* Expanded detail: tool call JSON */}
-      {expanded && toolCallLogs.length > 0 && (
+      {/* Expanded detail: tool call + result pairs */}
+      {expanded && toolPairs.length > 0 && (
         <div className="mt-2 space-y-2">
-          {toolCallLogs.slice(-3).map((tc, i) => (
-            <JsonViewer
-              key={i}
-              data={{ tool: tc.tool, args: tc.args }}
-              maxLines={6}
-              label={`Tool Call #${toolCallLogs.length - 2 + i > 0 ? toolCallLogs.length - 2 + i : i + 1}`}
-            />
+          {toolPairs.slice(-3).map((pair, i) => (
+            <div key={i} className="rounded bg-kage-bg/50 border border-kage-border/30 p-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-kage-text flex items-center gap-1">
+                  {pair.result?.success === false
+                    ? <XCircle size={12} className="text-red-400" />
+                    : pair.result
+                      ? <CheckCircle size={12} className="text-green-400" />
+                      : <span className="text-kage-primary/70">▶</span>
+                  }
+                  {pair.call.tool}
+                </span>
+                {pair.result?.duration_ms != null && (
+                  <span className="text-xs text-kage-sub/60 flex items-center gap-0.5">
+                    <Clock size={10} />
+                    {pair.result.duration_ms < 1000
+                      ? `${pair.result.duration_ms}ms`
+                      : `${(pair.result.duration_ms / 1000).toFixed(1)}s`}
+                  </span>
+                )}
+              </div>
+              <JsonViewer
+                data={{ args: pair.call.args }}
+                maxLines={4}
+                label="Args"
+              />
+              {pair.result && (
+                <div className={`mt-1 text-xs px-2 py-1 rounded ${
+                  pair.result.success === false
+                    ? 'bg-red-500/10 text-red-300'
+                    : 'bg-green-500/10 text-green-300'
+                }`}>
+                  <span className="font-medium">{pair.result.success === false ? 'Error: ' : 'Result: '}</span>
+                  <span className="break-all">{(pair.result.result || '').slice(0, 200)}</span>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

@@ -107,7 +107,25 @@ OTHER TOOLS
 ═══════════════════════════════════════
 - generate_html: { "filePath": "~/Desktop/output.html", "htmlContent": "<!DOCTYPE html>...", "openInBrowser": true }
 - write_excel: { "filePath": "/absolute/path.xlsx", "sheets": [{ "name": "Sheet1", "headers": ["Col1","Col2"], "data": [["val1","val2"]] }] }
-- create_presentation: { "filePath": "/path.pptx", "slides": [{ "layout": "title", "title": "...", "subtitle": "..." }] }
+- create_presentation: Create PROFESSIONAL multi-slide presentations about the USER'S TOPIC (NOT about KAGE).
+  CRITICAL: You MUST generate 8-15 slides with REAL, DETAILED content based on the user's request.
+  NEVER create only a title slide. NEVER substitute KAGE content for the user's topic.
+  Example structure:
+  { "filePath": "~/Desktop/presentation.pptx",
+    "title": "User's Topic Title",
+    "slides": [
+      { "layout": "title", "title": "Main Title", "subtitle": "Subtitle or tagline" },
+      { "layout": "content", "title": "Overview", "bullets": ["Point 1 with detail", "Point 2 with detail", "Point 3 with detail"] },
+      { "layout": "content", "title": "Key Features", "bullets": ["Feature A — explanation", "Feature B — explanation"] },
+      { "layout": "two_column", "title": "Comparison", "leftColumn": "Left content...", "rightColumn": "Right content..." },
+      { "layout": "content", "title": "Details", "body": "Paragraph text explaining the topic in depth..." },
+      { "layout": "content", "title": "Data Overview", "table": { "headers": ["Col1","Col2","Col3"], "rows": [["a","b","c"],["d","e","f"]] } },
+      { "layout": "content", "title": "Summary", "bullets": ["Takeaway 1", "Takeaway 2", "Takeaway 3"] }
+    ],
+    "theme": { "primaryColor": "4F46E5", "secondaryColor": "7C3AED" }
+  }
+  Available layouts: "title", "content", "two_column", "image", "blank"
+  Each slide can have: title, subtitle, body, bullets[], table{headers,rows}, leftColumn, rightColumn, imagePath, notes
 - open_application: { "appName": "App Name" }
 - run_applescript: { "script": "tell application \\"AppName\\" to ..." }
 - send_keys_to_app: { "appName": "App Name", "keys": "keystroke or shortcut" }
@@ -119,7 +137,8 @@ QUALITY RULES:
 3. For data tasks: include proper formatting, headers, calculated fields.
 4. Provide complete arguments — never omit required fields.
 5. If an error occurs, analyze the error carefully and retry with corrected arguments.
-6. NEVER suggest installing plugins or MCP servers.`
+6. NEVER suggest installing plugins or MCP servers.
+7. CRITICAL: When creating content (presentations, documents, etc.), the content MUST be about the USER'S TOPIC specified in "userRequest" — NEVER about KAGE itself unless explicitly asked. If subtask has a "userRequest" field, that is the user's original message and your content MUST match it.`
     };
   }
 
@@ -312,6 +331,25 @@ QUALITY RULES:
       } catch {}
     }
 
+    // Try to rescue create_presentation — look for slides JSON data
+    if (tools.includes('create_presentation')) {
+      try {
+        // Try to parse the entire decision as potential presentation data
+        const slidesData = this._extractPresentationData(decision, responseText, subtask);
+        if (slidesData) {
+          console.log(`[Executor Rescue] Found presentation data with ${slidesData.slides.length} slides`);
+          return {
+            action: 'tool_call',
+            tool: 'create_presentation',
+            arguments: slidesData,
+            reasoning: 'Auto-rescued: AI returned presentation data as direct response instead of tool_call',
+          };
+        }
+      } catch (e) {
+        console.error(`[Executor Rescue] create_presentation rescue failed: ${e.message}`);
+      }
+    }
+
     return null; // Could not rescue
   }
 
@@ -342,6 +380,78 @@ QUALITY RULES:
       if (desc.includes('figma')) return 'Figma';
     }
     return null;
+  }
+
+  /**
+   * Extract presentation data from a direct AI response.
+   * Looks for slides array in various locations within the decision object.
+   */
+  _extractPresentationData(decision, responseText, subtask) {
+    // Strategy 1: Check if decision has arguments/details with slides already structured
+    const candidates = [
+      decision.arguments,
+      decision.details,
+      decision.result && typeof decision.result === 'object' ? decision.result : null,
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      if (candidate.slides && Array.isArray(candidate.slides) && candidate.slides.length > 0) {
+        return {
+          filePath: candidate.filePath || this._deriveFilePath(subtask.description, 'pptx'),
+          title: candidate.title || this._derivePresentationTitle(subtask.description),
+          author: candidate.author || undefined,
+          slides: candidate.slides,
+          theme: candidate.theme || undefined,
+        };
+      }
+    }
+
+    // Strategy 2: Extract slides JSON from response text
+    const slidesMatch = responseText.match(/"slides"\s*:\s*\[[\s\S]*?\]\s*(?=\s*[,}])/);
+    if (slidesMatch) {
+      try {
+        // Wrap in braces and try to parse
+        let jsonStr = `{${slidesMatch[0]}}`;
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.slides && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
+          // Also try to extract filePath and title
+          const titleMatch = responseText.match(/"title"\s*:\s*"([^"]+)"/);
+          const filePathMatch = responseText.match(/"filePath"\s*:\s*"([^"]+)"/);
+          return {
+            filePath: filePathMatch ? filePathMatch[1] : this._deriveFilePath(subtask.description, 'pptx'),
+            title: titleMatch ? titleMatch[1] : this._derivePresentationTitle(subtask.description),
+            slides: parsed.slides,
+          };
+        }
+      } catch {}
+    }
+
+    // Strategy 3: Try parsing the entire response as JSON
+    try {
+      const fullParsed = JSON.parse(responseText);
+      if (fullParsed.slides && Array.isArray(fullParsed.slides)) {
+        return {
+          filePath: fullParsed.filePath || this._deriveFilePath(subtask.description, 'pptx'),
+          title: fullParsed.title || this._derivePresentationTitle(subtask.description),
+          slides: fullParsed.slides,
+          theme: fullParsed.theme || undefined,
+        };
+      }
+    } catch {}
+
+    return null;
+  }
+
+  /**
+   * Derive a presentation title from subtask description.
+   */
+  _derivePresentationTitle(description) {
+    // Remove common instruction words and extract the topic
+    return description
+      .replace(/create|make|build|generate|a|the|presentation|for|about|pptx|powerpoint/gi, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      || 'Presentation';
   }
 
   _mergeUsage(existing, newUsage) {
@@ -419,9 +529,12 @@ QUALITY RULES:
       }
     }
 
+    // Normalize arguments for common MCP tools (AI often uses camelCase, MCP expects snake_case)
+    const normalizedArgs = this._normalizeToolArgs(toolName, toolArgs);
+
     // Execute the tool via MCP
     try {
-      const toolResult = await mcpManager.callTool(toolName, toolArgs);
+      const toolResult = await mcpManager.callTool(toolName, normalizedArgs);
 
       // Extract text content from MCP result
       const resultText = toolResult.content
@@ -450,5 +563,75 @@ QUALITY RULES:
         error: `Tool execution failed: ${error.message}`,
       };
     }
+  }
+
+  /**
+   * Normalize tool arguments to match MCP server expectations.
+   * AI models often use camelCase (filePath) while MCP servers expect snake_case (path).
+   * Also resolves macOS /tmp → /private/tmp symlink issue.
+   */
+  _normalizeToolArgs(toolName, args) {
+    const normalized = { ...args };
+
+    // Filesystem tools: normalize filePath → path
+    if (['write_file', 'read_file', 'read_text_file', 'get_file_info', 'edit_file'].includes(toolName)) {
+      if (normalized.filePath && !normalized.path) {
+        normalized.path = normalized.filePath;
+        delete normalized.filePath;
+      }
+      if (normalized.file_path && !normalized.path) {
+        normalized.path = normalized.file_path;
+        delete normalized.file_path;
+      }
+      // macOS: resolve /tmp → /private/tmp
+      if (normalized.path && normalized.path.startsWith('/tmp/')) {
+        normalized.path = '/private' + normalized.path;
+      }
+    }
+
+    // list_directory: normalize directoryPath → path
+    if (['list_directory', 'list_directory_with_sizes', 'directory_tree', 'create_directory'].includes(toolName)) {
+      if (normalized.directoryPath && !normalized.path) {
+        normalized.path = normalized.directoryPath;
+        delete normalized.directoryPath;
+      }
+      if (normalized.directory_path && !normalized.path) {
+        normalized.path = normalized.directory_path;
+        delete normalized.directory_path;
+      }
+    }
+
+    // move_file: normalize source/destination
+    if (toolName === 'move_file') {
+      if (normalized.sourcePath && !normalized.source) {
+        normalized.source = normalized.sourcePath;
+        delete normalized.sourcePath;
+      }
+      if (normalized.destinationPath && !normalized.destination) {
+        normalized.destination = normalized.destinationPath;
+        delete normalized.destinationPath;
+      }
+    }
+
+    // search_files: normalize searchPath → path, searchPattern → pattern
+    if (toolName === 'search_files') {
+      if (normalized.searchPath && !normalized.path) {
+        normalized.path = normalized.searchPath;
+        delete normalized.searchPath;
+      }
+      if (normalized.searchPattern && !normalized.pattern) {
+        normalized.pattern = normalized.searchPattern;
+        delete normalized.searchPattern;
+      }
+    }
+
+    // Expand ~ in paths
+    for (const key of ['path', 'source', 'destination']) {
+      if (normalized[key] && normalized[key].startsWith('~/')) {
+        normalized[key] = normalized[key].replace('~', process.env.HOME || '/Users/jun');
+      }
+    }
+
+    return normalized;
   }
 }

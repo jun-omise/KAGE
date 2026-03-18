@@ -43,29 +43,68 @@ export class AuditLogger {
    * @param {object} options - Query options
    * @returns {Array} Array of event objects
    */
-  getEvents({ type, limit = 50, offset = 0 } = {}) {
+  query({ type, dateFrom, dateTo, limit = 50, offset = 0 } = {}) {
     try {
       const db = getDb();
-      let query = 'SELECT * FROM security_events';
+      const conditions = [];
       const params = [];
 
       if (type) {
-        query += ' WHERE event_type = ?';
+        conditions.push('event_type = ?');
         params.push(type);
       }
+      if (dateFrom) {
+        conditions.push('created_at >= ?');
+        params.push(dateFrom);
+      }
+      if (dateTo) {
+        conditions.push('created_at <= ?');
+        params.push(dateTo);
+      }
 
-      query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+      let sql = 'SELECT * FROM security_events';
+      if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
+      }
+      sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
       params.push(limit, offset);
 
-      const rows = db.prepare(query).all(...params);
+      const rows = db.prepare(sql).all(...params);
       return rows.map((row) => ({
         ...row,
         details: row.details ? JSON.parse(row.details) : {},
       }));
     } catch (err) {
-      console.error('AuditLogger getEvents error:', err.message);
+      console.error('AuditLogger query error:', err.message);
       return [];
     }
+  }
+
+  /**
+   * Alias for backward compatibility.
+   */
+  getEvents(options) {
+    return this.query(options);
+  }
+
+  /**
+   * Export audit events in JSON or CSV format.
+   * @param {'json'|'csv'} format - Export format
+   * @param {object} [filter] - Optional query filter
+   * @returns {string} Formatted export string
+   */
+  export(format = 'json', filter = {}) {
+    const events = this.query({ ...filter, limit: 10000 });
+
+    if (format === 'csv') {
+      const header = 'id,event_type,agent,details,created_at';
+      const rows = events.map(e =>
+        `"${e.id}","${e.event_type}","${e.agent || ''}","${JSON.stringify(e.details).replace(/"/g, '""')}","${e.created_at}"`
+      );
+      return [header, ...rows].join('\n');
+    }
+
+    return JSON.stringify(events, null, 2);
   }
 
   /**

@@ -105,31 +105,35 @@ export default function TaskBuilder() {
     if (!form.description.trim()) return;
     setAnalyzing(true);
     setPlan(null);
+    setError('');
     try {
+      const analyzePrompt = `Analyze the following task description and return ONLY a JSON object (no markdown, no explanation) with these fields:
+- "steps": array of step description strings
+- "permissions": array of required permissions like "read", "write", "external", "shell"
+- "estimatedCost": estimated cost in USD as a number
+
+Task description: ${form.description}`;
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [
-            {
-              role: 'system',
-              content: 'Analyze the following task description and return a JSON object with: steps (array of strings), permissions (array of strings like "read", "write", "external"), estimatedCost (number in USD). Be concise.',
-            },
-            { role: 'user', content: form.description },
-          ],
+          message: analyzePrompt,
         }),
       });
       if (!res.ok) throw new Error('Analysis failed');
       const data = await res.json();
-      // Try to parse plan from response
-      let parsed = data;
-      if (data.message) {
-        try {
-          const jsonMatch = data.message.match(/\{[\s\S]*\}/);
-          parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : data;
-        } catch {
-          parsed = { steps: [data.message], permissions: [], estimatedCost: 0 };
+      // Try to parse plan from response content
+      const content = data.content || data.message || '';
+      let parsed = {};
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
         }
+      } catch {
+        // If JSON parse fails, create a simple plan from the text
+        parsed = { steps: [content.slice(0, 200)], permissions: ['read'], estimatedCost: 0 };
       }
       setPlan({
         steps: parsed.steps || [],

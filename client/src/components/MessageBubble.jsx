@@ -1,177 +1,266 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, DollarSign, Bookmark } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import {
+  ChevronDown, ChevronRight, DollarSign, Bookmark,
+  Shield, Brain, Zap, ClipboardCheck, Search, Wrench,
+  FileText, Loader2, CheckCircle, XCircle,
+} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useI18n } from '../i18n/index.jsx';
 import ResultPresenter from './ResultPresenter';
 
-function SimpleMarkdown({ content }) {
-  if (!content) return null;
-
-  const lines = content.split('\n');
-  const elements = [];
-  let inCodeBlock = false;
-  let codeLines = [];
-  let codeLang = '';
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    if (line.startsWith('```')) {
-      if (inCodeBlock) {
-        elements.push(
-          <pre key={`code-${i}`} className="bg-kage-bg rounded-lg p-3 my-2 overflow-x-auto text-sm">
-            <code className="text-kage-text">{codeLines.join('\n')}</code>
-          </pre>
-        );
-        codeLines = [];
-        inCodeBlock = false;
-      } else {
-        inCodeBlock = true;
-        codeLang = line.slice(3).trim();
-      }
-      continue;
-    }
-
-    if (inCodeBlock) {
-      codeLines.push(line);
-      continue;
-    }
-
-    if (line.startsWith('### ')) {
-      elements.push(<h3 key={i} className="text-base font-semibold mt-3 mb-1">{formatInline(line.slice(4))}</h3>);
-    } else if (line.startsWith('## ')) {
-      elements.push(<h2 key={i} className="text-lg font-semibold mt-3 mb-1">{formatInline(line.slice(3))}</h2>);
-    } else if (line.startsWith('# ')) {
-      elements.push(<h1 key={i} className="text-xl font-bold mt-3 mb-1">{formatInline(line.slice(2))}</h1>);
-    } else if (line.startsWith('- ') || line.startsWith('* ')) {
-      elements.push(
-        <li key={i} className="ml-4 list-disc text-sm leading-relaxed">{formatInline(line.slice(2))}</li>
-      );
-    } else if (/^\d+\.\s/.test(line)) {
-      const text = line.replace(/^\d+\.\s/, '');
-      elements.push(
-        <li key={i} className="ml-4 list-decimal text-sm leading-relaxed">{formatInline(text)}</li>
-      );
-    } else if (line.trim() === '') {
-      elements.push(<div key={i} className="h-2" />);
-    } else {
-      elements.push(<p key={i} className="text-sm leading-relaxed">{formatInline(line)}</p>);
-    }
-  }
-
-  return <div className="space-y-0.5">{elements}</div>;
-}
-
-function formatInline(text) {
-  const parts = [];
-  let remaining = text;
-  let key = 0;
-
-  while (remaining.length > 0) {
-    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
-    const codeMatch = remaining.match(/`([^`]+)`/);
-
-    let firstMatch = null;
-    let firstIndex = remaining.length;
-
-    if (boldMatch && boldMatch.index < firstIndex) {
-      firstMatch = { type: 'bold', match: boldMatch };
-      firstIndex = boldMatch.index;
-    }
-    if (codeMatch && codeMatch.index < firstIndex) {
-      firstMatch = { type: 'code', match: codeMatch };
-      firstIndex = codeMatch.index;
-    }
-
-    if (!firstMatch) {
-      parts.push(remaining);
-      break;
-    }
-
-    if (firstIndex > 0) {
-      parts.push(remaining.slice(0, firstIndex));
-    }
-
-    if (firstMatch.type === 'bold') {
-      parts.push(<strong key={key++} className="font-semibold">{firstMatch.match[1]}</strong>);
-      remaining = remaining.slice(firstIndex + firstMatch.match[0].length);
-    } else if (firstMatch.type === 'code') {
-      parts.push(
-        <code key={key++} className="bg-kage-bg px-1.5 py-0.5 rounded text-kage-primary text-xs font-mono">
-          {firstMatch.match[1]}
+const markdownComponents = {
+  h1: ({ children }) => <h1 className="text-xl font-bold mt-3 mb-1">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-lg font-semibold mt-3 mb-1">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-1">{children}</h3>,
+  p: ({ children }) => <p className="text-sm leading-relaxed mb-1">{children}</p>,
+  ul: ({ children }) => <ul className="ml-4 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="ml-4 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  code: ({ inline, className, children }) => {
+    if (inline) {
+      return (
+        <code className="bg-kage-bg px-1.5 py-0.5 rounded text-kage-primary text-xs font-mono">
+          {children}
         </code>
       );
-      remaining = remaining.slice(firstIndex + firstMatch.match[0].length);
     }
-  }
+    return (
+      <pre className="bg-[#1a1b26] rounded-lg p-3 my-2 overflow-x-auto text-sm border border-kage-border/30">
+        <code className="text-kage-text font-mono">{children}</code>
+      </pre>
+    );
+  },
+  pre: ({ children }) => <>{children}</>,
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-kage-primary hover:underline">
+      {children}
+    </a>
+  ),
+  table: ({ children }) => (
+    <div className="overflow-x-auto my-2">
+      <table className="min-w-full text-sm border border-kage-border">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="border border-kage-border px-2 py-1 bg-kage-bg font-medium text-left">{children}</th>,
+  td: ({ children }) => <td className="border border-kage-border px-2 py-1">{children}</td>,
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-kage-primary pl-3 my-2 text-kage-sub italic">{children}</blockquote>
+  ),
+  hr: () => <hr className="border-kage-border my-3" />,
+};
 
-  return parts;
+function MarkdownContent({ content }) {
+  if (!content) return null;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+const AGENT_ICONS = {
+  sentinel: Shield,
+  planner: Brain,
+  executor: Zap,
+  reviewer: ClipboardCheck,
+  researcher: Search,
+};
+
+const AGENT_COLORS = {
+  sentinel: 'text-yellow-400',
+  planner: 'text-purple-400',
+  executor: 'text-blue-400',
+  reviewer: 'text-green-400',
+  researcher: 'text-cyan-400',
+};
+
+function ToolCallBlock({ log }) {
+  const [expanded, setExpanded] = useState(false);
+  const toolName = log.tool || 'unknown';
+  const args = log.args;
+
+  // Truncate preview of args
+  const preview = useMemo(() => {
+    if (!args) return '';
+    if (typeof args === 'string') return args.slice(0, 80);
+    const str = JSON.stringify(args);
+    return str.length > 100 ? str.slice(0, 100) + '...' : str;
+  }, [args]);
+
+  return (
+    <div className="rounded border border-kage-border/30 bg-[#1a1b26] overflow-hidden my-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left hover:bg-white/5 transition-colors"
+      >
+        <Wrench size={12} className="text-kage-primary flex-shrink-0" />
+        <span className="text-xs font-mono text-kage-text truncate flex-1">{toolName}</span>
+        {expanded ? <ChevronDown size={12} className="text-kage-sub" /> : <ChevronRight size={12} className="text-kage-sub" />}
+      </button>
+      {expanded && args && (
+        <div className="px-2.5 pb-2 border-t border-kage-border/20">
+          <pre className="text-[11px] text-kage-sub font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto mt-1.5">
+            {typeof args === 'string' ? args : JSON.stringify(args, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ToolResultBlock({ log }) {
+  const [expanded, setExpanded] = useState(false);
+  const isSuccess = log.success !== false;
+
+  return (
+    <div className="rounded border border-kage-border/30 bg-[#1a1b26] overflow-hidden my-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left hover:bg-white/5 transition-colors"
+      >
+        {isSuccess
+          ? <CheckCircle size={12} className="text-green-400 flex-shrink-0" />
+          : <XCircle size={12} className="text-red-400 flex-shrink-0" />
+        }
+        <span className="text-xs font-mono text-kage-sub truncate flex-1">
+          {log.tool || 'result'} {log.duration_ms ? `(${(log.duration_ms / 1000).toFixed(1)}s)` : ''}
+        </span>
+        {expanded ? <ChevronDown size={12} className="text-kage-sub" /> : <ChevronRight size={12} className="text-kage-sub" />}
+      </button>
+      {expanded && log.result && (
+        <div className="px-2.5 pb-2 border-t border-kage-border/20">
+          <pre className="text-[11px] text-kage-sub font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto mt-1.5">
+            {typeof log.result === 'string' ? log.result : JSON.stringify(log.result, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentTraceInline({ agentTrace }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!agentTrace) return null;
+
+  // agentTrace can be either { agents: [...] } or an array of trace entries
+  const traceEntries = Array.isArray(agentTrace) ? agentTrace : agentTrace.agents || [];
+  if (traceEntries.length === 0) return null;
+
+  return (
+    <div className="mt-2 border-t border-kage-border/20 pt-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-kage-sub hover:text-kage-text transition-colors"
+      >
+        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span className="font-medium">Agent Pipeline</span>
+        <span className="text-kage-sub/60">({traceEntries.length} steps)</span>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1 pl-1">
+          {traceEntries.map((entry, i) => {
+            const agentName = entry.agent || entry.name || 'unknown';
+            const AgentIcon = AGENT_ICONS[agentName] || Wrench;
+            const agentColor = AGENT_COLORS[agentName] || 'text-kage-sub';
+            const logs = entry.logs || [];
+
+            return (
+              <AgentTraceEntry
+                key={i}
+                agent={agentName}
+                Icon={AgentIcon}
+                color={agentColor}
+                entry={entry}
+                logs={logs}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentTraceEntry({ agent, Icon, color, entry, logs }) {
+  const [showLogs, setShowLogs] = useState(false);
+  const hasLogs = logs.length > 0;
+  const toolCalls = logs.filter(l => l.type === 'tool_call');
+  const toolResults = logs.filter(l => l.type === 'tool_result');
+
+  return (
+    <div className="rounded border border-kage-border/20 bg-kage-bg/30 overflow-hidden">
+      <button
+        onClick={() => hasLogs && setShowLogs(!showLogs)}
+        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left hover:bg-white/3 transition-colors"
+      >
+        <Icon size={13} className={color} />
+        <span className={`text-xs font-medium ${color} capitalize`}>{agent}</span>
+        {entry.action && <span className="text-[11px] text-kage-sub truncate flex-1">{entry.action}</span>}
+        {entry.duration_ms && (
+          <span className="text-[10px] text-kage-sub/60">{(entry.duration_ms / 1000).toFixed(1)}s</span>
+        )}
+        {hasLogs && (showLogs ? <ChevronDown size={11} className="text-kage-sub" /> : <ChevronRight size={11} className="text-kage-sub" />)}
+      </button>
+      {showLogs && (
+        <div className="px-2.5 pb-2 space-y-0.5">
+          {logs.map((log, j) => {
+            if (log.type === 'tool_call') return <ToolCallBlock key={j} log={log} />;
+            if (log.type === 'tool_result') return <ToolResultBlock key={j} log={log} />;
+            return null;
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function MessageBubble({ message, onSaveAsTemplate }) {
   const { t } = useI18n();
-  const [showTrace, setShowTrace] = useState(false);
   const isUser = message.role === 'user';
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className={`max-w-[85%] rounded-2xl px-4 py-3 ${
           isUser
             ? 'bg-kage-primary text-white rounded-br-md'
-            : 'bg-kage-card border border-kage-border text-kage-text rounded-bl-md'
+            : 'bg-kage-card border border-kage-border/50 text-kage-text rounded-bl-md'
         }`}
       >
-        <SimpleMarkdown content={message.content} />
+        <MarkdownContent content={message.content} />
 
         {/* Save as Template button (user messages only) */}
         {isUser && onSaveAsTemplate && (
           <button
             onClick={() => onSaveAsTemplate(message.content)}
             className="flex items-center gap-1 mt-2 text-xs text-white/50 hover:text-white/80 transition-colors"
-            title={t('templates.saveAs') || 'テンプレートとして保存'}
+            title={t('templates.saveAs') || 'Save as template'}
           >
             <Bookmark size={12} />
-            <span>{t('templates.saveAs') || 'テンプレート保存'}</span>
+            <span>{t('templates.saveAs') || 'Template'}</span>
           </button>
         )}
 
         {/* Cost display */}
-        {message.cost && (
+        {message.cost > 0 && (
           <div className={`flex items-center gap-1 mt-2 text-xs ${isUser ? 'text-white/60' : 'text-kage-sub'}`}>
             <DollarSign size={12} />
             <span>${typeof message.cost === 'number' ? message.cost.toFixed(4) : message.cost}</span>
           </div>
         )}
 
-        {/* File results */}
+        {/* File results - code block style */}
         {!isUser && message.fileResults && message.fileResults.length > 0 && (
           <ResultPresenter fileResults={message.fileResults} />
         )}
 
-        {/* Agent trace toggle */}
-        {message.agentTrace && (
-          <div className="mt-2 border-t border-white/10 pt-2">
-            <button
-              onClick={() => setShowTrace(!showTrace)}
-              className={`flex items-center gap-1 text-xs ${isUser ? 'text-white/60 hover:text-white/80' : 'text-kage-sub hover:text-kage-text'} transition-colors`}
-            >
-              {showTrace ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              Agent Trace
-            </button>
-            {showTrace && (
-              <div className={`mt-1.5 text-xs space-y-1 ${isUser ? 'text-white/50' : 'text-kage-sub'}`}>
-                {message.agentTrace.agents && message.agentTrace.agents.map((agent, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <span className="font-medium">{agent.name}:</span>
-                    <span>{agent.action}</span>
-                  </div>
-                ))}
-                {message.agentTrace.elapsed && (
-                  <div>{t('agents.elapsed')}: {message.agentTrace.elapsed}s</div>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Agent trace - inline collapsible */}
+        {!isUser && message.agentTrace && (
+          <AgentTraceInline agentTrace={message.agentTrace} />
         )}
       </div>
     </div>

@@ -21,6 +21,7 @@ export default {
     icon: 'electron/icons/icon.icns',
     category: 'public.app-category.productivity',
     darkModeSupport: true,
+    artifactName: 'KAGE-macOS.${ext}',
   },
 
   dmg: {
@@ -43,6 +44,7 @@ export default {
     allowToChangeInstallationDirectory: false,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
+    artifactName: 'KAGE-Windows-Setup.${ext}',
   },
 
   linux: {

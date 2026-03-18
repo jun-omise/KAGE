@@ -43,6 +43,15 @@ const PII_PATTERNS = {
       return `${prefix}****${last4}`;
     },
   },
+  my_number: {
+    // Japanese マイナンバー (Individual Number): 12 digits, optionally grouped as 4-4-4
+    regex: /\b\d{4}\s?\d{4}\s?\d{4}\b/g,
+    mask: (match) => {
+      const digits = match.replace(/\s/g, '');
+      const last4 = digits.slice(-4);
+      return `****-****-${last4}`;
+    },
+  },
 };
 
 /**
@@ -76,6 +85,29 @@ export function detectPII(text) {
 /**
  * Mask all PII in text, replacing detected patterns with masked versions.
  */
+/**
+ * Scan text for PII. Returns { hasPII, findings }.
+ * Each finding: { type, value (masked), position }
+ */
+export function scan(text) {
+  const findings = detectPII(text);
+  return {
+    hasPII: findings.length > 0,
+    findings: findings.map(f => ({
+      type: f.type,
+      value: f.masked,
+      position: f.start,
+    })),
+  };
+}
+
+/**
+ * Alias for maskPII — matches spec's mask() signature.
+ */
+export function mask(text) {
+  return maskPII(text);
+}
+
 export function maskPII(text) {
   if (!text || typeof text !== 'string') return text;
 
