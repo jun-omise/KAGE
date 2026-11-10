@@ -39,6 +39,7 @@ function initSchema() {
       content TEXT NOT NULL,
       attachments JSON,
       agent_trace JSON,
+      file_results JSON,
       cost REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -218,6 +219,13 @@ function initSchema() {
   } catch {
     db.exec("ALTER TABLE tool_configs ADD COLUMN status TEXT DEFAULT 'disconnected'");
     db.exec("ALTER TABLE tool_configs ADD COLUMN updated_at DATETIME");
+  }
+
+  // Migration: add file_results to messages
+  try {
+    db.prepare("SELECT file_results FROM messages LIMIT 0").get();
+  } catch {
+    db.exec("ALTER TABLE messages ADD COLUMN file_results JSON");
   }
 }
 

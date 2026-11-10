@@ -242,6 +242,7 @@ class AgentOrchestrator {
           tools_used: [],
           complexity,
           token_usage: sessionTotal,
+          fileResults: [],
         };
       }
 
@@ -597,6 +598,7 @@ class AgentOrchestrator {
         tools_used: this.extractToolsUsed(trace),
         complexity,
         token_usage: sessionTotal,
+        fileResults,
       };
     } catch (error) {
       this.activeTasks.delete(taskId);

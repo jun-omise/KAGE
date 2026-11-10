@@ -2,20 +2,28 @@ import { Router } from 'express';
 import { exec } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname } from 'path';
+import { homedir } from 'os';
 
 const router = Router();
+
+function expandHome(p) {
+  if (!p) return p;
+  if (p.startsWith('~/')) return p.replace('~', homedir());
+  return p;
+}
 
 // POST /open - Open a file with default app or specific app
 router.post('/open', (req, res) => {
   try {
-    const { path, app } = req.body;
+    const { path: rawPath, app } = req.body;
+    const path = expandHome(rawPath);
 
     if (!path) {
       return res.status(400).json({ error: 'Path is required' });
     }
 
     if (!existsSync(path)) {
-      return res.status(404).json({ error: 'File not found' });
+      return res.status(404).json({ error: 'File not found', path });
     }
 
     const platform = process.platform;
@@ -49,7 +57,8 @@ router.post('/open', (req, res) => {
 // POST /open-folder - Open the containing folder
 router.post('/open-folder', (req, res) => {
   try {
-    const { path } = req.body;
+    const { path: rawPath } = req.body;
+    const path = expandHome(rawPath);
 
     if (!path) {
       return res.status(400).json({ error: 'Path is required' });

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { api } from '../api.js';
 
 export function useChat() {
   const [messages, setMessages] = useState([]);
@@ -26,7 +27,13 @@ export function useChat() {
       const res = await fetch(`/api/conversations/${id}`);
       if (!res.ok) throw new Error('Failed to load conversation');
       const data = await res.json();
-      setMessages(data.messages || []);
+      // Parse JSON fields from DB
+      const parsed = (data.messages || []).map(msg => ({
+        ...msg,
+        agentTrace: msg.agent_trace ? (typeof msg.agent_trace === 'string' ? JSON.parse(msg.agent_trace) : msg.agent_trace) : null,
+        fileResults: msg.file_results ? (typeof msg.file_results === 'string' ? JSON.parse(msg.file_results) : msg.file_results) : null,
+      }));
+      setMessages(parsed);
     } catch (err) {
       setError(err.message);
     } finally {

@@ -69,12 +69,13 @@ router.post('/chat', async (req, res) => {
 
       const responseText = result.response || '';
 
-      // Save assistant response with cost and trace
+      // Save assistant response with cost, trace, and file results
       const assistantMsgId = uuidv4();
       const responseTime = new Date().toISOString();
+      const fileResults = result.fileResults || [];
       db.prepare(
-        'INSERT INTO messages (id, conversation_id, role, content, cost, agent_trace, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(assistantMsgId, convId, 'assistant', responseText, result.cost || 0, JSON.stringify(result.trace || []), responseTime);
+        'INSERT INTO messages (id, conversation_id, role, content, cost, agent_trace, file_results, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(assistantMsgId, convId, 'assistant', responseText, result.cost || 0, JSON.stringify(result.trace || []), fileResults.length > 0 ? JSON.stringify(fileResults) : null, responseTime);
 
       db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(responseTime, convId);
 

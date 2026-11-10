@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
   FileText, FileSpreadsheet, Presentation, FileCode, File,
-  ExternalLink, FolderOpen, ChevronDown, ChevronRight,
+  ExternalLink, FolderOpen,
 } from 'lucide-react';
-import { useI18n } from '../i18n/index.jsx';
+import { api } from '../api.js';
 
 const FILE_ICONS = {
   pptx: Presentation,
@@ -55,20 +55,10 @@ function getFileDir(path) {
   const parts = path?.split('/') || [];
   parts.pop();
   const dir = parts.join('/') || '/';
-  // Shorten home directory
   return dir.replace(/^\/Users\/[^/]+/, '~');
 }
 
-function formatFileSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
 export default function ResultPresenter({ fileResults }) {
-  const { t } = useI18n();
-
   if (!fileResults || fileResults.length === 0) return null;
 
   return (
@@ -81,6 +71,8 @@ export default function ResultPresenter({ fileResults }) {
 }
 
 function FileResultBlock({ file }) {
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState(null);
   const ext = getExt(file.path);
   const Icon = FILE_ICONS[ext] || File;
   const color = FILE_COLORS[ext] || 'text-kage-sub';
@@ -88,41 +80,34 @@ function FileResultBlock({ file }) {
   const fileDir = getFileDir(file.path);
 
   const handleOpen = async () => {
+    setOpening(true);
+    setError(null);
     try {
-      await fetch('/api/files/open', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: file.path, app: 'default' }),
-      });
+      await api.post('/files/open', { path: file.path });
     } catch (err) {
       console.error('Failed to open file:', err);
+      setError('Failed to open');
+    } finally {
+      setOpening(false);
     }
   };
 
   const handleOpenFolder = async () => {
     try {
-      await fetch('/api/files/open-folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: file.path }),
-      });
+      await api.post('/files/open-folder', { path: file.path });
     } catch (err) {
       console.error('Failed to open folder:', err);
     }
   };
 
   return (
-    <div className="rounded-lg border border-kage-border/50 bg-[#1a1b26] overflow-hidden group">
+    <div className="rounded-lg border border-kage-border/50 bg-[#1a1b26] overflow-hidden">
       {/* File header bar */}
       <div className="flex items-center gap-2 px-3 py-2 bg-[#16171f] border-b border-kage-border/30">
         <Icon size={14} className={color} />
         <span className="text-xs font-mono text-kage-text font-medium flex-1 truncate">
           {fileName}
         </span>
-        <span className="text-[10px] text-kage-sub font-mono">{fileDir}</span>
-      </div>
-      {/* File info / action row */}
-      <div className="flex items-center gap-2 px-3 py-2">
         <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
           file.action === 'created' ? 'bg-green-500/10 text-green-400'
           : file.action === 'modified' ? 'bg-yellow-500/10 text-yellow-400'
@@ -130,26 +115,31 @@ function FileResultBlock({ file }) {
         }`}>
           {ACTION_LABELS[file.action] || file.action}
         </span>
-        {file.size && (
-          <span className="text-[10px] text-kage-sub">{formatFileSize(file.size)}</span>
-        )}
-        <div className="flex-1" />
-        <button
-          onClick={handleOpen}
-          className="flex items-center gap-1 text-[11px] text-kage-primary hover:text-kage-primary/80 transition-colors opacity-0 group-hover:opacity-100"
-          title="Open with default app"
-        >
-          <ExternalLink size={12} />
-          Open
-        </button>
+      </div>
+      {/* File path + actions */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="text-[11px] text-kage-sub font-mono truncate flex-1">{fileDir}</span>
         <button
           onClick={handleOpenFolder}
-          className="flex items-center gap-1 text-[11px] text-kage-sub hover:text-kage-text transition-colors opacity-0 group-hover:opacity-100"
+          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-kage-sub hover:text-kage-text hover:bg-white/5 transition-colors"
           title="Show in Finder"
         >
           <FolderOpen size={12} />
+          <span className="hidden sm:inline">Folder</span>
+        </button>
+        <button
+          onClick={handleOpen}
+          disabled={opening}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-kage-primary/15 text-kage-primary hover:bg-kage-primary/25 transition-colors disabled:opacity-50"
+          title="Open with default app"
+        >
+          <ExternalLink size={13} />
+          {opening ? 'Opening...' : 'Open File'}
         </button>
       </div>
+      {error && (
+        <div className="px-3 pb-2 text-[11px] text-red-400">{error}</div>
+      )}
     </div>
   );
 }
